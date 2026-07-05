@@ -22,9 +22,9 @@ class TelemetryStoreTest {
     store = new TelemetryStore();
   }
 
-  private static Map<String, String> qitsAttributes(String repoId, String worktreeId) {
+  private static Map<String, String> qitsAttributes(String repoId, String workspaceId) {
     return Map.of(
-        "service.name", "svc", "qits.repository.id", repoId, "qits.worktree.id", worktreeId);
+        "service.name", "svc", "qits.repository.id", repoId, "qits.workspace.id", workspaceId);
   }
 
   private static StoredSpan span(
@@ -60,7 +60,7 @@ class TelemetryStoreTest {
   }
 
   @Test
-  void bucketsAreIsolatedByWorktree() {
+  void bucketsAreIsolatedByWorkspace() {
     store.addSpans(List.of(span("t1", "a", qitsAttributes("repoA", "wt1"), 1)));
     store.addSpans(List.of(span("t2", "b", qitsAttributes("repoB", "wt2"), 2)));
 
@@ -72,7 +72,7 @@ class TelemetryStoreTest {
 
   @Test
   void spanCapEvictsOldestAndPrunesTraceIndex() {
-    store.maxSpansPerWorktree = 3;
+    store.maxSpansPerWorkspace = 3;
     Map<String, String> attrs = qitsAttributes("repo", "wt");
     for (int i = 1; i <= 5; i++) {
       store.addSpans(List.of(span("trace-" + i, "span-" + i, attrs, i)));
@@ -88,8 +88,8 @@ class TelemetryStoreTest {
 
   @Test
   void byteAccountingReturnsToZeroWhenEverythingEvicts() {
-    store.maxSpansPerWorktree = 1;
-    store.maxLogsPerWorktree = 1;
+    store.maxSpansPerWorkspace = 1;
+    store.maxLogsPerWorkspace = 1;
     Map<String, String> attrs = qitsAttributes("repo", "wt");
     for (int i = 0; i < 4; i++) {
       store.addSpans(List.of(span("t", "s" + i, attrs, i)));
@@ -119,7 +119,7 @@ class TelemetryStoreTest {
       store.addLogs(List.of(log("chatty " + i, chatty, 10 + i)));
     }
 
-    assertEquals(1, store.logs("repo", "quiet").size(), "quiet worktree lost telemetry");
+    assertEquals(1, store.logs("repo", "quiet").size(), "quiet workspace lost telemetry");
     assertTrue(store.totalBytes() <= store.maxTotalBytes);
     List<StoredLog> chattyLogs = store.logs("repo", "chatty");
     assertTrue(chattyLogs.size() < 20, "chatty bucket was not evicted");
@@ -141,7 +141,7 @@ class TelemetryStoreTest {
 
   @Test
   void metricSeriesReplaceInPlaceAndNewSeriesAreCappedButUpdatesStillLand() {
-    store.maxMetricSeriesPerWorktree = 2;
+    store.maxMetricSeriesPerWorkspace = 2;
     Map<String, String> attrs = qitsAttributes("repo", "wt");
     store.addMetrics(List.of(metric("m1", 1.0, Map.of("k", "a"), attrs)));
     store.addMetrics(List.of(metric("m1", 2.0, Map.of("k", "a"), attrs)));
@@ -158,7 +158,7 @@ class TelemetryStoreTest {
   }
 
   @Test
-  void unattributedTelemetryIsQuarantinedNotVisibleToAnyWorktree() {
+  void unattributedTelemetryIsQuarantinedNotVisibleToAnyWorkspace() {
     store.addSpans(List.of(span("t", "unscoped", Map.of("service.name", "svc"), 1)));
 
     assertTrue(store.spans("repo", "wt").isEmpty());

@@ -16,12 +16,12 @@ import org.junit.jupiter.api.Test;
 
 /** The UI's JSON twins answer from the same store buckets as the MCP tools. */
 @QuarkusTest
-class WorktreeTelemetryControllerTest {
+class WorkspaceTelemetryControllerTest {
 
   private static final String REPO = "repo-rest";
-  private static final String WORKTREE = "wt-rest";
+  private static final String WORKSPACE = "wt-rest";
   private static final String BASE =
-      "/api/repositories/" + REPO + "/worktrees/" + WORKTREE + "/telemetry";
+      "/api/repositories/" + REPO + "/workspaces/" + WORKSPACE + "/telemetry";
 
   @Inject TelemetryStore store;
 
@@ -34,21 +34,21 @@ class WorktreeTelemetryControllerTest {
     store.addSpans(
         decoder.decodeSpans(
             TelemetryFixtures.errorTraceRequest(
-                "svc", REPO, WORKTREE, TelemetryFixtures.TRACE_ID_A, TelemetryFixtures.SPAN_ID_A),
+                "svc", REPO, WORKSPACE, TelemetryFixtures.TRACE_ID_A, TelemetryFixtures.SPAN_ID_A),
             now));
     store.addLogs(
         decoder.decodeLogs(
             TelemetryFixtures.logsRequest(
                 "svc",
                 REPO,
-                WORKTREE,
+                WORKSPACE,
                 SeverityNumber.SEVERITY_NUMBER_ERROR,
                 "rest error log",
                 TelemetryFixtures.TRACE_ID_A),
             now));
     store.addMetrics(
         decoder.decodeMetrics(
-            TelemetryFixtures.metricsRequest("svc", REPO, WORKTREE, 1.5, 3), now));
+            TelemetryFixtures.metricsRequest("svc", REPO, WORKSPACE, 1.5, 3), now));
   }
 
   @Test
@@ -112,9 +112,9 @@ class WorktreeTelemetryControllerTest {
   }
 
   @Test
-  void anotherWorktreeSeesNothing() {
+  void anotherWorkspaceSeesNothing() {
     given()
-        .get("/api/repositories/" + REPO + "/worktrees/elsewhere/telemetry/errors")
+        .get("/api/repositories/" + REPO + "/workspaces/elsewhere/telemetry/errors")
         .then()
         .statusCode(200)
         .body("groups", hasSize(0));

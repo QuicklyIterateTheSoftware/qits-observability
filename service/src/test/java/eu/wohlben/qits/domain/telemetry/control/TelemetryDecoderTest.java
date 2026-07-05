@@ -49,7 +49,7 @@ class TelemetryDecoderTest {
     assertEquals("ERROR", span.status());
     assertEquals("boom", span.statusMessage());
     assertEquals("repo-1", span.resourceAttributes().get("qits.repository.id"));
-    assertEquals("wt-1", span.resourceAttributes().get("qits.worktree.id"));
+    assertEquals("wt-1", span.resourceAttributes().get("qits.workspace.id"));
     assertEquals(42L, span.receivedAtMillis());
     assertTrue(span.isError());
     assertTrue(span.hasExceptionEvent());

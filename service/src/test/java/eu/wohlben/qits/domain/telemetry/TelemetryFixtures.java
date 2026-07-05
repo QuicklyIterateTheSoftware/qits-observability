@@ -41,14 +41,14 @@ public final class TelemetryFixtures {
 
   private TelemetryFixtures() {}
 
-  public static Resource resource(String serviceName, String repoId, String worktreeId) {
+  public static Resource resource(String serviceName, String repoId, String workspaceId) {
     Resource.Builder resource =
         Resource.newBuilder().addAttributes(attribute("service.name", serviceName));
     if (repoId != null) {
       resource.addAttributes(attribute("qits.repository.id", repoId));
     }
-    if (worktreeId != null) {
-      resource.addAttributes(attribute("qits.worktree.id", worktreeId));
+    if (workspaceId != null) {
+      resource.addAttributes(attribute("qits.workspace.id", workspaceId));
     }
     return resource.build();
   }
@@ -62,7 +62,7 @@ public final class TelemetryFixtures {
 
   /** An ERROR-status span carrying an OTel {@code exception} event, in a full trace request. */
   public static ExportTraceServiceRequest errorTraceRequest(
-      String serviceName, String repoId, String worktreeId, String traceId, String spanId) {
+      String serviceName, String repoId, String workspaceId, String traceId, String spanId) {
     Span span =
         spanBuilder(traceId, spanId, "GET /boom")
             .setStatus(
@@ -75,14 +75,14 @@ public final class TelemetryFixtures {
                     .addAttributes(attribute("exception.message", "boom"))
                     .addAttributes(attribute("exception.stacktrace", "at eu.example.Boom.go")))
             .build();
-    return traceRequest(resource(serviceName, repoId, worktreeId), span);
+    return traceRequest(resource(serviceName, repoId, workspaceId), span);
   }
 
   /** A plain OK span, in a full trace request. */
   public static ExportTraceServiceRequest okTraceRequest(
-      String serviceName, String repoId, String worktreeId, String traceId, String spanId) {
+      String serviceName, String repoId, String workspaceId, String traceId, String spanId) {
     return traceRequest(
-        resource(serviceName, repoId, worktreeId),
+        resource(serviceName, repoId, workspaceId),
         spanBuilder(traceId, spanId, "GET /fine").build());
   }
 
@@ -112,7 +112,7 @@ public final class TelemetryFixtures {
   public static ExportLogsServiceRequest logsRequest(
       String serviceName,
       String repoId,
-      String worktreeId,
+      String workspaceId,
       SeverityNumber severity,
       String body,
       String traceId) {
@@ -128,14 +128,14 @@ public final class TelemetryFixtures {
     return ExportLogsServiceRequest.newBuilder()
         .addResourceLogs(
             ResourceLogs.newBuilder()
-                .setResource(resource(serviceName, repoId, worktreeId))
+                .setResource(resource(serviceName, repoId, workspaceId))
                 .addScopeLogs(ScopeLogs.newBuilder().addLogRecords(log)))
         .build();
   }
 
   /** One gauge and one sum ("counter") metric in a full metrics request. */
   public static ExportMetricsServiceRequest metricsRequest(
-      String serviceName, String repoId, String worktreeId, double gaugeValue, long counterValue) {
+      String serviceName, String repoId, String workspaceId, double gaugeValue, long counterValue) {
     Metric gauge =
         Metric.newBuilder()
             .setName("jvm.memory.used")
@@ -162,7 +162,7 @@ public final class TelemetryFixtures {
     return ExportMetricsServiceRequest.newBuilder()
         .addResourceMetrics(
             ResourceMetrics.newBuilder()
-                .setResource(resource(serviceName, repoId, worktreeId))
+                .setResource(resource(serviceName, repoId, workspaceId))
                 .addScopeMetrics(ScopeMetrics.newBuilder().addMetrics(gauge).addMetrics(counter)))
         .build();
   }

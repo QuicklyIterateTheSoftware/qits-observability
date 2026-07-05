@@ -34,20 +34,20 @@ public class TelemetryQueryService {
    * trace id.
    */
   public List<TelemetryErrorGroupDto> errors(
-      String repoId, String worktreeId, Integer sinceMinutes) {
+      String repoId, String workspaceId, Integer sinceMinutes) {
     long cutoff = cutoff(sinceMinutes);
     Map<String, List<StoredSpan>> spansByTrace = new LinkedHashMap<>();
     Map<String, List<StoredLog>> logsByTrace = new LinkedHashMap<>();
     Map<String, Long> newestByTrace = new LinkedHashMap<>();
 
-    for (StoredSpan span : store.spans(repoId, worktreeId)) {
+    for (StoredSpan span : store.spans(repoId, workspaceId)) {
       if (span.receivedAtMillis() < cutoff || !(span.isError() || span.hasExceptionEvent())) {
         continue;
       }
       spansByTrace.computeIfAbsent(span.traceId(), t -> new ArrayList<>()).add(span);
       newestByTrace.merge(span.traceId(), span.receivedAtMillis(), Math::max);
     }
-    for (StoredLog log : store.logs(repoId, worktreeId)) {
+    for (StoredLog log : store.logs(repoId, workspaceId)) {
       if (log.receivedAtMillis() < cutoff || !log.isError()) {
         continue;
       }
@@ -80,14 +80,14 @@ public class TelemetryQueryService {
   }
 
   /** The full trace: its spans ordered by start time plus every log correlated to it. */
-  public TelemetryTraceDto trace(String repoId, String worktreeId, String traceId) {
+  public TelemetryTraceDto trace(String repoId, String workspaceId, String traceId) {
     List<TelemetrySpanDto> spans =
-        store.trace(repoId, worktreeId, traceId).stream()
+        store.trace(repoId, workspaceId, traceId).stream()
             .sorted(Comparator.comparingLong(StoredSpan::startEpochNanos))
             .map(TelemetrySpanDto::of)
             .toList();
     List<TelemetryLogDto> logs =
-        store.logs(repoId, worktreeId).stream()
+        store.logs(repoId, workspaceId).stream()
             .filter(log -> traceId.equals(log.traceId()))
             .sorted(Comparator.comparingLong(StoredLog::epochNanos))
             .map(TelemetryLogDto::of)
@@ -97,9 +97,9 @@ public class TelemetryQueryService {
 
   /** Spans at least {@code thresholdMs} long, slowest first. */
   public List<TelemetrySpanDto> slowSpans(
-      String repoId, String worktreeId, long thresholdMs, Integer sinceMinutes) {
+      String repoId, String workspaceId, long thresholdMs, Integer sinceMinutes) {
     long cutoff = cutoff(sinceMinutes);
-    return store.spans(repoId, worktreeId).stream()
+    return store.spans(repoId, workspaceId).stream()
         .filter(span -> span.receivedAtMillis() >= cutoff && span.durationMs() >= thresholdMs)
         .sorted(Comparator.comparingLong(StoredSpan::durationMs).reversed())
         .map(TelemetrySpanDto::of)
@@ -111,10 +111,10 @@ public class TelemetryQueryService {
    * {@code service} additionally narrows to one service name (the UI's log-tail filter).
    */
   public List<TelemetryLogDto> searchLogs(
-      String repoId, String worktreeId, String query, Integer sinceMinutes, String service) {
+      String repoId, String workspaceId, String query, Integer sinceMinutes, String service) {
     long cutoff = cutoff(sinceMinutes);
     String needle = query == null ? "" : query.toLowerCase(Locale.ROOT);
-    return store.logs(repoId, worktreeId).stream()
+    return store.logs(repoId, workspaceId).stream()
         .filter(log -> log.receivedAtMillis() >= cutoff)
         .filter(log -> service == null || service.isBlank() || service.equals(log.serviceName()))
         .filter(
@@ -128,8 +128,8 @@ public class TelemetryQueryService {
   }
 
   /** The latest point of every metric series, optionally narrowed to one metric name. */
-  public List<TelemetryMetricDto> metrics(String repoId, String worktreeId, String name) {
-    return store.metrics(repoId, worktreeId).stream()
+  public List<TelemetryMetricDto> metrics(String repoId, String workspaceId, String name) {
+    return store.metrics(repoId, workspaceId).stream()
         .filter(point -> name == null || name.isBlank() || name.equals(point.name()))
         .sorted(Comparator.comparing(point -> point.name()))
         .map(TelemetryMetricDto::of)

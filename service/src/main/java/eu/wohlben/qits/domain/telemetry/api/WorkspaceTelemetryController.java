@@ -17,12 +17,12 @@ import jakarta.ws.rs.core.MediaType;
 import java.util.List;
 
 /**
- * The REST twins of the telemetry MCP tools, for the UI's worktree telemetry tab. Read-only JSON
+ * The REST twins of the telemetry MCP tools, for the UI's workspace telemetry tab. Read-only JSON
  * over the same {@link TelemetryQueryService}, so humans and agents see identical answers.
  */
-@Path("/repositories/{repoId}/worktrees/{worktreeId}/telemetry")
+@Path("/repositories/{repoId}/workspaces/{workspaceId}/telemetry")
 @Produces(MediaType.APPLICATION_JSON)
-public class WorktreeTelemetryController {
+public class WorkspaceTelemetryController {
 
   @Inject TelemetryQueryService queryService;
 
@@ -34,10 +34,10 @@ public class WorktreeTelemetryController {
   @Path("/errors")
   public ListTelemetryErrorsRequest.Response errors(
       @PathParam("repoId") String repoId,
-      @PathParam("worktreeId") String worktreeId,
+      @PathParam("workspaceId") String workspaceId,
       @QueryParam("sinceMinutes") Integer sinceMinutes) {
     return new ListTelemetryErrorsRequest.Response(
-        queryService.errors(repoId, worktreeId, sinceMinutes));
+        queryService.errors(repoId, workspaceId, sinceMinutes));
   }
 
   public static record GetTelemetryTraceRequest() {
@@ -48,9 +48,9 @@ public class WorktreeTelemetryController {
   @Path("/traces/{traceId}")
   public GetTelemetryTraceRequest.Response trace(
       @PathParam("repoId") String repoId,
-      @PathParam("worktreeId") String worktreeId,
+      @PathParam("workspaceId") String workspaceId,
       @PathParam("traceId") String traceId) {
-    return new GetTelemetryTraceRequest.Response(queryService.trace(repoId, worktreeId, traceId));
+    return new GetTelemetryTraceRequest.Response(queryService.trace(repoId, workspaceId, traceId));
   }
 
   public static record ListSlowSpansRequest() {
@@ -61,11 +61,11 @@ public class WorktreeTelemetryController {
   @Path("/slow-spans")
   public ListSlowSpansRequest.Response slowSpans(
       @PathParam("repoId") String repoId,
-      @PathParam("worktreeId") String worktreeId,
+      @PathParam("workspaceId") String workspaceId,
       @QueryParam("thresholdMs") @DefaultValue("500") long thresholdMs,
       @QueryParam("sinceMinutes") Integer sinceMinutes) {
     return new ListSlowSpansRequest.Response(
-        queryService.slowSpans(repoId, worktreeId, thresholdMs, sinceMinutes));
+        queryService.slowSpans(repoId, workspaceId, thresholdMs, sinceMinutes));
   }
 
   public static record SearchTelemetryLogsRequest() {
@@ -76,12 +76,12 @@ public class WorktreeTelemetryController {
   @Path("/logs")
   public SearchTelemetryLogsRequest.Response logs(
       @PathParam("repoId") String repoId,
-      @PathParam("worktreeId") String worktreeId,
+      @PathParam("workspaceId") String workspaceId,
       @QueryParam("query") String query,
       @QueryParam("service") String service,
       @QueryParam("sinceMinutes") Integer sinceMinutes) {
     return new SearchTelemetryLogsRequest.Response(
-        queryService.searchLogs(repoId, worktreeId, query, sinceMinutes, service));
+        queryService.searchLogs(repoId, workspaceId, query, sinceMinutes, service));
   }
 
   public static record ListTelemetryMetricsRequest() {
@@ -92,8 +92,9 @@ public class WorktreeTelemetryController {
   @Path("/metrics")
   public ListTelemetryMetricsRequest.Response metrics(
       @PathParam("repoId") String repoId,
-      @PathParam("worktreeId") String worktreeId,
+      @PathParam("workspaceId") String workspaceId,
       @QueryParam("name") String name) {
-    return new ListTelemetryMetricsRequest.Response(queryService.metrics(repoId, worktreeId, name));
+    return new ListTelemetryMetricsRequest.Response(
+        queryService.metrics(repoId, workspaceId, name));
   }
 }

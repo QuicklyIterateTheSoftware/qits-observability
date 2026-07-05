@@ -21,7 +21,7 @@ class OtelReceiverResourceTest {
 
   private static final String PROTOBUF = "application/x-protobuf";
   private static final String REPO = "repo-1";
-  private static final String WORKTREE = "wt-1";
+  private static final String WORKSPACE = "wt-1";
 
   @Inject TelemetryStore store;
 
@@ -36,7 +36,7 @@ class OtelReceiverResourceTest {
         TelemetryFixtures.errorTraceRequest(
                 "my-service",
                 REPO,
-                WORKTREE,
+                WORKSPACE,
                 TelemetryFixtures.TRACE_ID_A,
                 TelemetryFixtures.SPAN_ID_A)
             .toByteArray();
@@ -54,7 +54,7 @@ class OtelReceiverResourceTest {
             .asByteArray();
     assertEquals(0, response.length, "success response is the empty ExportTraceServiceResponse");
 
-    List<StoredSpan> spans = store.spans(REPO, WORKTREE);
+    List<StoredSpan> spans = store.spans(REPO, WORKSPACE);
     assertEquals(1, spans.size());
     assertEquals(TelemetryFixtures.TRACE_ID_A, spans.getFirst().traceId());
     assertEquals("my-service", spans.getFirst().serviceName());
@@ -68,7 +68,7 @@ class OtelReceiverResourceTest {
         TelemetryFixtures.logsRequest(
                 "my-service",
                 REPO,
-                WORKTREE,
+                WORKSPACE,
                 SeverityNumber.SEVERITY_NUMBER_ERROR,
                 "it broke",
                 TelemetryFixtures.TRACE_ID_A)
@@ -83,7 +83,7 @@ class OtelReceiverResourceTest {
         .statusCode(200)
         .contentType(PROTOBUF);
 
-    List<StoredLog> logs = store.logs(REPO, WORKTREE);
+    List<StoredLog> logs = store.logs(REPO, WORKSPACE);
     assertEquals(1, logs.size());
     assertEquals("it broke", logs.getFirst().body());
     assertTrue(logs.getFirst().isError());
@@ -92,7 +92,7 @@ class OtelReceiverResourceTest {
   @Test
   void acceptsMetricsExport() {
     byte[] body =
-        TelemetryFixtures.metricsRequest("my-service", REPO, WORKTREE, 12.5, 300).toByteArray();
+        TelemetryFixtures.metricsRequest("my-service", REPO, WORKSPACE, 12.5, 300).toByteArray();
 
     given()
         .contentType(PROTOBUF)
@@ -103,7 +103,7 @@ class OtelReceiverResourceTest {
         .statusCode(200)
         .contentType(PROTOBUF);
 
-    List<MetricPoint> metrics = store.metrics(REPO, WORKTREE);
+    List<MetricPoint> metrics = store.metrics(REPO, WORKSPACE);
     assertEquals(2, metrics.size());
   }
 
@@ -114,7 +114,7 @@ class OtelReceiverResourceTest {
             TelemetryFixtures.okTraceRequest(
                     "my-service",
                     REPO,
-                    WORKTREE,
+                    WORKSPACE,
                     TelemetryFixtures.TRACE_ID_B,
                     TelemetryFixtures.SPAN_ID_B)
                 .toByteArray());
@@ -127,7 +127,7 @@ class OtelReceiverResourceTest {
         .then()
         .statusCode(200);
 
-    assertEquals(1, store.trace(REPO, WORKTREE, TelemetryFixtures.TRACE_ID_B).size());
+    assertEquals(1, store.trace(REPO, WORKSPACE, TelemetryFixtures.TRACE_ID_B).size());
   }
 
   @Test
@@ -139,7 +139,7 @@ class OtelReceiverResourceTest {
         .post("/api/otel/v1/traces")
         .then()
         .statusCode(400);
-    assertTrue(store.spans(REPO, WORKTREE).isEmpty());
+    assertTrue(store.spans(REPO, WORKSPACE).isEmpty());
   }
 
   @Test

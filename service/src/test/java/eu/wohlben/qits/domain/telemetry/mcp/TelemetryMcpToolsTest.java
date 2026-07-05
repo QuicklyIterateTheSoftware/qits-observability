@@ -27,8 +27,8 @@ import org.junit.jupiter.api.Test;
 
 /**
  * Verifies the telemetry tools on the "repository" MCP server: they exist only for sessions
- * narrowed to repository + worktree, they answer from the session's worktree bucket only, and error
- * evidence is grouped by trace with correlated logs.
+ * narrowed to repository + workspace, they answer from the session's workspace bucket only, and
+ * error evidence is grouped by trace with correlated logs.
  */
 @QuarkusTest
 @TestProfile(TelemetryMcpToolsTest.TestProfile.class)
@@ -83,27 +83,27 @@ public class TelemetryMcpToolsTest {
         .path("repository.id");
   }
 
-  private void createWorktree(String repoId, String worktreeId) {
+  private void createWorkspace(String repoId, String workspaceId) {
     given()
         .contentType(ContentType.JSON)
-        .body(Map.of("id", worktreeId, "parent", "master"))
-        .post("/api/repositories/" + repoId + "/worktrees")
+        .body(Map.of("id", workspaceId, "parent", "master"))
+        .post("/api/repositories/" + repoId + "/workspaces")
         .then()
         .statusCode(200);
   }
 
   /** Seeds the store through the real decoder — same records the receiver would produce. */
-  private void seedErrorTrace(String repoId, String worktreeId, String traceId, String spanId) {
+  private void seedErrorTrace(String repoId, String workspaceId, String traceId, String spanId) {
     store.addSpans(
         decoder.decodeSpans(
-            TelemetryFixtures.errorTraceRequest("svc", repoId, worktreeId, traceId, spanId),
+            TelemetryFixtures.errorTraceRequest("svc", repoId, workspaceId, traceId, spanId),
             System.currentTimeMillis()));
     store.addLogs(
         decoder.decodeLogs(
             TelemetryFixtures.logsRequest(
                 "svc",
                 repoId,
-                worktreeId,
+                workspaceId,
                 SeverityNumber.SEVERITY_NUMBER_ERROR,
                 "correlated error log",
                 traceId),
@@ -116,7 +116,7 @@ public class TelemetryMcpToolsTest {
         .collect(Collectors.joining("\n"));
   }
 
-  private McpStreamableTestClient client(String projectId, String repoId, String worktreeId) {
+  private McpStreamableTestClient client(String projectId, String repoId, String workspaceId) {
     return McpAssured.newStreamableClient()
         .setMcpPath("/mcp/repository")
         .setAdditionalHeaders(
@@ -126,8 +126,8 @@ public class TelemetryMcpToolsTest {
               if (repoId != null) {
                 headers.add(ProjectScope.REPOSITORY_HEADER, repoId);
               }
-              if (worktreeId != null) {
-                headers.add(WorktreeScope.WORKTREE_HEADER, worktreeId);
+              if (workspaceId != null) {
+                headers.add(WorkspaceScope.WORKSPACE_HEADER, workspaceId);
               }
               return headers;
             })
@@ -139,7 +139,7 @@ public class TelemetryMcpToolsTest {
   public void errorsGroupByTraceAndTraceReturnsCorrelatedLogs() {
     String project = createProject("Telemetry");
     String repoId = createRepository(project);
-    createWorktree(repoId, "work");
+    createWorkspace(repoId, "work");
     seedErrorTrace(repoId, "work", TelemetryFixtures.TRACE_ID_A, TelemetryFixtures.SPAN_ID_A);
     seedErrorTrace(repoId, "work", TelemetryFixtures.TRACE_ID_B, TelemetryFixtures.SPAN_ID_B);
     var client = client(project, repoId, "work");
@@ -171,11 +171,11 @@ public class TelemetryMcpToolsTest {
   }
 
   @Test
-  public void aSessionOnlySeesItsOwnWorktreesTelemetry() {
+  public void aSessionOnlySeesItsOwnWorkspacesTelemetry() {
     String project = createProject("Telemetry Isolation");
     String repoId = createRepository(project);
-    createWorktree(repoId, "mine");
-    createWorktree(repoId, "other");
+    createWorkspace(repoId, "mine");
+    createWorkspace(repoId, "other");
     seedErrorTrace(repoId, "other", TelemetryFixtures.TRACE_ID_B, TelemetryFixtures.SPAN_ID_B);
     var client = client(project, repoId, "mine");
 
@@ -189,7 +189,7 @@ public class TelemetryMcpToolsTest {
               assertFalse(r.isError(), out);
               assertFalse(
                   out.contains(TelemetryFixtures.TRACE_ID_B),
-                  "another worktree's telemetry leaked: " + out);
+                  "another workspace's telemetry leaked: " + out);
             })
         .thenAssertResults();
   }
@@ -198,7 +198,7 @@ public class TelemetryMcpToolsTest {
   public void slowSpansSearchLogsAndMetricsAnswerFromTheScopedBucket() {
     String project = createProject("Telemetry Queries");
     String repoId = createRepository(project);
-    createWorktree(repoId, "work");
+    createWorkspace(repoId, "work");
     seedErrorTrace(repoId, "work", TelemetryFixtures.TRACE_ID_A, TelemetryFixtures.SPAN_ID_A);
     store.addMetrics(
         decoder.decodeMetrics(
@@ -230,7 +230,7 @@ public class TelemetryMcpToolsTest {
   }
 
   @Test
-  public void telemetryToolsAreHiddenWithoutWorktreeScope() {
+  public void telemetryToolsAreHiddenWithoutWorkspaceScope() {
     String project = createProject("Telemetry Filter");
     String repoId = createRepository(project);
     var repoOnly = client(project, repoId, null);
@@ -244,8 +244,8 @@ public class TelemetryMcpToolsTest {
             })
         .thenAssertResults();
 
-    var worktreeScoped = client(project, repoId, "work");
-    worktreeScoped
+    var workspaceScoped = client(project, repoId, "work");
+    workspaceScoped
         .when()
         .toolsList(
             page -> {

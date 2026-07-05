@@ -17,20 +17,20 @@ import org.eclipse.microprofile.config.inject.ConfigProperty;
 import org.jboss.logging.Logger;
 
 /**
- * The in-memory telemetry buffer: recent spans, log records and metric points per worktree,
+ * The in-memory telemetry buffer: recent spans, log records and metric points per workspace,
  * bounded, ephemeral — a JVM restart empties it, and that is the feature (no entity, no migration,
  * no H2 table). Same philosophy as the command ring buffer ({@code CommandSession}): byte-accounted
  * deques, evict-oldest.
  *
- * <p>Records are bucketed by the {@code qits.repository.id} / {@code qits.worktree.id} resource
+ * <p>Records are bucketed by the {@code qits.repository.id} / {@code qits.workspace.id} resource
  * attributes that qits stamps into every launch with the {@code otel} toggle ({@code
  * OTEL_RESOURCE_ATTRIBUTES}); telemetry arriving without them lands in a quarantine bucket ({@link
  * #UNSCOPED_KEY}) that is bounded like any other but not exposed by the query surface.
  *
- * <p>Bounding is two-tier: per-worktree count caps (spans/logs/metric series) enforced inside the
+ * <p>Bounding is two-tier: per-workspace count caps (spans/logs/metric series) enforced inside the
  * bucket monitor, and a global byte ceiling enforced afterwards by evicting the oldest records from
  * the <em>fattest</em> bucket — so one chatty daemon pays for its own volume instead of evicting a
- * quieter worktree's telemetry. Lock order is always {@code evictionLock → bucket monitor}, and
+ * quieter workspace's telemetry. Lock order is always {@code evictionLock → bucket monitor}, and
  * appenders never take {@code evictionLock} while holding a bucket monitor, so the two tiers can't
  * deadlock.
  */
@@ -43,28 +43,28 @@ public class TelemetryStore {
   public static final String UNSCOPED_KEY = "_unscoped";
 
   static final String REPOSITORY_ATTRIBUTE = "qits.repository.id";
-  static final String WORKTREE_ATTRIBUTE = "qits.worktree.id";
+  static final String WORKSPACE_ATTRIBUTE = "qits.workspace.id";
 
   // Package-visible so the plain-JUnit store test can shrink them; injected values come from
   // qits.telemetry.* when running in Quarkus (defaults here, pattern of qits.daemons.*).
-  @ConfigProperty(name = "qits.telemetry.max-spans-per-worktree", defaultValue = "5000")
-  int maxSpansPerWorktree = 5000;
+  @ConfigProperty(name = "qits.telemetry.max-spans-per-workspace", defaultValue = "5000")
+  int maxSpansPerWorkspace = 5000;
 
-  @ConfigProperty(name = "qits.telemetry.max-logs-per-worktree", defaultValue = "10000")
-  int maxLogsPerWorktree = 10000;
+  @ConfigProperty(name = "qits.telemetry.max-logs-per-workspace", defaultValue = "10000")
+  int maxLogsPerWorkspace = 10000;
 
-  @ConfigProperty(name = "qits.telemetry.max-metric-series-per-worktree", defaultValue = "500")
-  int maxMetricSeriesPerWorktree = 500;
+  @ConfigProperty(name = "qits.telemetry.max-metric-series-per-workspace", defaultValue = "500")
+  int maxMetricSeriesPerWorkspace = 500;
 
   @ConfigProperty(name = "qits.telemetry.max-total-bytes", defaultValue = "67108864")
   long maxTotalBytes = 64L * 1024 * 1024;
 
-  private final ConcurrentHashMap<String, WorktreeBuffer> buffers = new ConcurrentHashMap<>();
+  private final ConcurrentHashMap<String, WorkspaceBuffer> buffers = new ConcurrentHashMap<>();
   private final AtomicLong totalBytes = new AtomicLong();
   private final Object evictionLock = new Object();
 
   /** All fields guarded by the buffer's own monitor. */
-  private static final class WorktreeBuffer {
+  private static final class WorkspaceBuffer {
     final ArrayDeque<StoredSpan> spans = new ArrayDeque<>();
     final ArrayDeque<StoredLog> logs = new ArrayDeque<>();
     final LinkedHashMap<String, MetricPoint> metrics = new LinkedHashMap<>();
@@ -75,12 +75,12 @@ public class TelemetryStore {
 
   public void addSpans(Collection<StoredSpan> spans) {
     for (StoredSpan span : spans) {
-      WorktreeBuffer buffer = bufferFor(span.resourceAttributes());
+      WorkspaceBuffer buffer = bufferFor(span.resourceAttributes());
       synchronized (buffer) {
         buffer.spans.addLast(span);
         buffer.spansByTrace.computeIfAbsent(span.traceId(), t -> new ArrayList<>()).add(span);
         account(buffer, TelemetrySizeEstimator.bytesOf(span));
-        while (buffer.spans.size() > maxSpansPerWorktree) {
+        while (buffer.spans.size() > maxSpansPerWorkspace) {
           evictOldestSpan(buffer);
         }
       }
@@ -90,11 +90,11 @@ public class TelemetryStore {
 
   public void addLogs(Collection<StoredLog> logs) {
     for (StoredLog log : logs) {
-      WorktreeBuffer buffer = bufferFor(log.resourceAttributes());
+      WorkspaceBuffer buffer = bufferFor(log.resourceAttributes());
       synchronized (buffer) {
         buffer.logs.addLast(log);
         account(buffer, TelemetrySizeEstimator.bytesOf(log));
-        while (buffer.logs.size() > maxLogsPerWorktree) {
+        while (buffer.logs.size() > maxLogsPerWorkspace) {
           account(buffer, -TelemetrySizeEstimator.bytesOf(buffer.logs.removeFirst()));
         }
       }
@@ -104,16 +104,16 @@ public class TelemetryStore {
 
   public void addMetrics(Collection<MetricPoint> points) {
     for (MetricPoint point : points) {
-      WorktreeBuffer buffer = bufferFor(point.resourceAttributes());
+      WorkspaceBuffer buffer = bufferFor(point.resourceAttributes());
       synchronized (buffer) {
         String key = point.seriesKey();
         MetricPoint previous = buffer.metrics.get(key);
-        if (previous == null && buffer.metrics.size() >= maxMetricSeriesPerWorktree) {
+        if (previous == null && buffer.metrics.size() >= maxMetricSeriesPerWorkspace) {
           if (!buffer.metricCapWarned) {
             buffer.metricCapWarned = true;
             LOG.warnf(
-                "Telemetry metric-series cap (%d) reached for a worktree; new series are dropped",
-                maxMetricSeriesPerWorktree);
+                "Telemetry metric-series cap (%d) reached for a workspace; new series are dropped",
+                maxMetricSeriesPerWorkspace);
           }
           continue;
         }
@@ -127,9 +127,9 @@ public class TelemetryStore {
     enforceGlobalCeiling();
   }
 
-  /** Snapshot of the worktree's buffered spans, oldest first. */
-  public List<StoredSpan> spans(String repoId, String worktreeId) {
-    WorktreeBuffer buffer = buffers.get(key(repoId, worktreeId));
+  /** Snapshot of the workspace's buffered spans, oldest first. */
+  public List<StoredSpan> spans(String repoId, String workspaceId) {
+    WorkspaceBuffer buffer = buffers.get(key(repoId, workspaceId));
     if (buffer == null) {
       return List.of();
     }
@@ -138,9 +138,9 @@ public class TelemetryStore {
     }
   }
 
-  /** The worktree's buffered spans belonging to {@code traceId}, oldest first. */
-  public List<StoredSpan> trace(String repoId, String worktreeId, String traceId) {
-    WorktreeBuffer buffer = buffers.get(key(repoId, worktreeId));
+  /** The workspace's buffered spans belonging to {@code traceId}, oldest first. */
+  public List<StoredSpan> trace(String repoId, String workspaceId, String traceId) {
+    WorkspaceBuffer buffer = buffers.get(key(repoId, workspaceId));
     if (buffer == null) {
       return List.of();
     }
@@ -150,9 +150,9 @@ public class TelemetryStore {
     }
   }
 
-  /** Snapshot of the worktree's buffered log records, oldest first. */
-  public List<StoredLog> logs(String repoId, String worktreeId) {
-    WorktreeBuffer buffer = buffers.get(key(repoId, worktreeId));
+  /** Snapshot of the workspace's buffered log records, oldest first. */
+  public List<StoredLog> logs(String repoId, String workspaceId) {
+    WorkspaceBuffer buffer = buffers.get(key(repoId, workspaceId));
     if (buffer == null) {
       return List.of();
     }
@@ -161,9 +161,9 @@ public class TelemetryStore {
     }
   }
 
-  /** Snapshot of the worktree's metric series (latest point per series). */
-  public List<MetricPoint> metrics(String repoId, String worktreeId) {
-    WorktreeBuffer buffer = buffers.get(key(repoId, worktreeId));
+  /** Snapshot of the workspace's metric series (latest point per series). */
+  public List<MetricPoint> metrics(String repoId, String workspaceId) {
+    WorkspaceBuffer buffer = buffers.get(key(repoId, workspaceId));
     if (buffer == null) {
       return List.of();
     }
@@ -180,7 +180,7 @@ public class TelemetryStore {
   /** Drops everything. Test seam (and nothing else calls it). */
   public void clear() {
     synchronized (evictionLock) {
-      for (WorktreeBuffer buffer : buffers.values()) {
+      for (WorkspaceBuffer buffer : buffers.values()) {
         synchronized (buffer) {
           totalBytes.addAndGet(-buffer.bytes);
           buffer.bytes = 0;
@@ -194,28 +194,28 @@ public class TelemetryStore {
     }
   }
 
-  private WorktreeBuffer bufferFor(Map<String, String> resourceAttributes) {
+  private WorkspaceBuffer bufferFor(Map<String, String> resourceAttributes) {
     String repoId = resourceAttributes.get(REPOSITORY_ATTRIBUTE);
-    String worktreeId = resourceAttributes.get(WORKTREE_ATTRIBUTE);
+    String workspaceId = resourceAttributes.get(WORKSPACE_ATTRIBUTE);
     String key =
-        (repoId == null || repoId.isBlank() || worktreeId == null || worktreeId.isBlank())
+        (repoId == null || repoId.isBlank() || workspaceId == null || workspaceId.isBlank())
             ? UNSCOPED_KEY
-            : key(repoId, worktreeId);
-    return buffers.computeIfAbsent(key, k -> new WorktreeBuffer());
+            : key(repoId, workspaceId);
+    return buffers.computeIfAbsent(key, k -> new WorkspaceBuffer());
   }
 
-  private static String key(String repoId, String worktreeId) {
-    return repoId + "/" + worktreeId;
+  private static String key(String repoId, String workspaceId) {
+    return repoId + "/" + workspaceId;
   }
 
   /** Caller must hold the buffer monitor. */
-  private void account(WorktreeBuffer buffer, int delta) {
+  private void account(WorkspaceBuffer buffer, int delta) {
     buffer.bytes += delta;
     totalBytes.addAndGet(delta);
   }
 
   /** Caller must hold the buffer monitor; the buffer must have at least one span. */
-  private void evictOldestSpan(WorktreeBuffer buffer) {
+  private void evictOldestSpan(WorkspaceBuffer buffer) {
     StoredSpan evicted = buffer.spans.removeFirst();
     List<StoredSpan> indexed = buffer.spansByTrace.get(evicted.traceId());
     if (indexed != null) {
@@ -239,9 +239,9 @@ public class TelemetryStore {
     }
     synchronized (evictionLock) {
       while (totalBytes.get() > maxTotalBytes) {
-        WorktreeBuffer fattest = null;
+        WorkspaceBuffer fattest = null;
         long fattestBytes = -1;
-        for (WorktreeBuffer buffer : buffers.values()) {
+        for (WorkspaceBuffer buffer : buffers.values()) {
           synchronized (buffer) {
             if (buffer.bytes > fattestBytes
                 && (!buffer.spans.isEmpty() || !buffer.logs.isEmpty())) {
