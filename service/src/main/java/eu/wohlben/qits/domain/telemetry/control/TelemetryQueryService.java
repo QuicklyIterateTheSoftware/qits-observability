@@ -95,13 +95,25 @@ public class TelemetryQueryService {
     return new TelemetryTraceDto(traceId, spans, logs);
   }
 
-  /** Spans at least {@code thresholdMs} long, slowest first. */
+  /** How {@link #slowSpans} orders its result. */
+  public enum SpanSort {
+    /** Slowest first — the "what's slow" lens. */
+    DURATION,
+    /** Newest start time first — the "what did I just do" lens. */
+    RECENT
+  }
+
+  /** Spans at least {@code thresholdMs} long, ordered per {@code sort}. */
   public List<TelemetrySpanDto> slowSpans(
-      String repoId, String workspaceId, long thresholdMs, Integer sinceMinutes) {
+      String repoId, String workspaceId, long thresholdMs, Integer sinceMinutes, SpanSort sort) {
     long cutoff = cutoff(sinceMinutes);
+    Comparator<StoredSpan> order =
+        sort == SpanSort.RECENT
+            ? Comparator.comparingLong(StoredSpan::startEpochNanos).reversed()
+            : Comparator.comparingLong(StoredSpan::durationMs).reversed();
     return store.spans(repoId, workspaceId).stream()
         .filter(span -> span.receivedAtMillis() >= cutoff && span.durationMs() >= thresholdMs)
-        .sorted(Comparator.comparingLong(StoredSpan::durationMs).reversed())
+        .sorted(order)
         .map(TelemetrySpanDto::of)
         .toList();
   }

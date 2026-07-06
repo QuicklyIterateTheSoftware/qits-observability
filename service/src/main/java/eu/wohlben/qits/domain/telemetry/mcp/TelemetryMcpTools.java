@@ -86,7 +86,12 @@ public class TelemetryMcpTools {
               description = "only spans received in the last N minutes (default: all buffered)")
           Integer sinceMinutes) {
     Scope scope = requireScope();
-    return queryService.slowSpans(scope.repoId(), scope.workspaceId(), thresholdMs, sinceMinutes);
+    return queryService.slowSpans(
+        scope.repoId(),
+        scope.workspaceId(),
+        thresholdMs,
+        sinceMinutes,
+        TelemetryQueryService.SpanSort.DURATION);
   }
 
   @McpServer("repository")

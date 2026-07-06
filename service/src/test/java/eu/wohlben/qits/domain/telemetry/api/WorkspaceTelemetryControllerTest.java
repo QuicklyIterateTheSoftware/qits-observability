@@ -90,6 +90,36 @@ class WorkspaceTelemetryControllerTest {
   }
 
   @Test
+  void slowSpansSortRecentOrdersByStartTimeDesc() {
+    // A later-starting but faster span: with the default duration sort it comes second,
+    // with sort=recent it comes first.
+    store.addSpans(
+        decoder.decodeSpans(
+            TelemetryFixtures.traceRequest(
+                TelemetryFixtures.resource("svc", REPO, WORKSPACE),
+                TelemetryFixtures.spanBuilder(
+                        TelemetryFixtures.TRACE_ID_B,
+                        TelemetryFixtures.SPAN_ID_B,
+                        "GET /later",
+                        2_000_000_000L,
+                        2_100_000_000L)
+                    .build()),
+            System.currentTimeMillis()));
+    given()
+        .get(BASE + "/slow-spans?thresholdMs=0")
+        .then()
+        .statusCode(200)
+        .body("spans", hasSize(2))
+        .body("spans[0].spanId", equalTo(TelemetryFixtures.SPAN_ID_A));
+    given()
+        .get(BASE + "/slow-spans?thresholdMs=0&sort=recent")
+        .then()
+        .statusCode(200)
+        .body("spans", hasSize(2))
+        .body("spans[0].spanId", equalTo(TelemetryFixtures.SPAN_ID_B));
+  }
+
+  @Test
   void logsFilterByQueryAndService() {
     given()
         .get(BASE + "/logs?query=REST")

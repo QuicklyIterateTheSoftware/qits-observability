@@ -99,13 +99,19 @@ public final class TelemetryFixtures {
   }
 
   public static Span.Builder spanBuilder(String traceId, String spanId, String name) {
+    return spanBuilder(traceId, spanId, name, 1_000_000_000L, 1_250_000_000L);
+  }
+
+  /** Like {@link #spanBuilder(String, String, String)} but with explicit start/end times. */
+  public static Span.Builder spanBuilder(
+      String traceId, String spanId, String name, long startNanos, long endNanos) {
     return Span.newBuilder()
         .setTraceId(bytes(traceId))
         .setSpanId(bytes(spanId))
         .setName(name)
         .setKind(Span.SpanKind.SPAN_KIND_SERVER)
-        .setStartTimeUnixNano(1_000_000_000L)
-        .setEndTimeUnixNano(1_250_000_000L);
+        .setStartTimeUnixNano(startNanos)
+        .setEndTimeUnixNano(endNanos);
   }
 
   /** A single log record in a full logs request. */

@@ -63,9 +63,14 @@ public class WorkspaceTelemetryController {
       @PathParam("repoId") String repoId,
       @PathParam("workspaceId") String workspaceId,
       @QueryParam("thresholdMs") @DefaultValue("500") long thresholdMs,
-      @QueryParam("sinceMinutes") Integer sinceMinutes) {
+      @QueryParam("sinceMinutes") Integer sinceMinutes,
+      @QueryParam("sort") @DefaultValue("duration") String sort) {
+    TelemetryQueryService.SpanSort spanSort =
+        "recent".equalsIgnoreCase(sort)
+            ? TelemetryQueryService.SpanSort.RECENT
+            : TelemetryQueryService.SpanSort.DURATION;
     return new ListSlowSpansRequest.Response(
-        queryService.slowSpans(repoId, workspaceId, thresholdMs, sinceMinutes));
+        queryService.slowSpans(repoId, workspaceId, thresholdMs, sinceMinutes, spanSort));
   }
 
   public static record SearchTelemetryLogsRequest() {
