@@ -3,14 +3,19 @@ package eu.wohlben.qits.domain.telemetry.control;
 import eu.wohlben.qits.domain.telemetry.dto.MetricPoint;
 import eu.wohlben.qits.domain.telemetry.dto.StoredLog;
 import eu.wohlben.qits.domain.telemetry.dto.StoredSpan;
+import eu.wohlben.qits.domain.workspace.control.WorkspaceChangeHint;
+import eu.wohlben.qits.domain.workspace.control.WorkspaceChangePublisher;
 import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.inject.Inject;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
@@ -59,6 +64,9 @@ public class TelemetryStore {
   @ConfigProperty(name = "qits.telemetry.max-total-bytes", defaultValue = "67108864")
   long maxTotalBytes = 64L * 1024 * 1024;
 
+  // Null in the plain-JUnit store test (it news up the store directly, no CDI); guarded before use.
+  @Inject WorkspaceChangePublisher changePublisher;
+
   private final ConcurrentHashMap<String, WorkspaceBuffer> buffers = new ConcurrentHashMap<>();
   private final AtomicLong totalBytes = new AtomicLong();
   private final Object evictionLock = new Object();
@@ -86,6 +94,7 @@ public class TelemetryStore {
       }
     }
     enforceGlobalCeiling();
+    fireTelemetryHints(spans, StoredSpan::resourceAttributes);
   }
 
   public void addLogs(Collection<StoredLog> logs) {
@@ -100,6 +109,7 @@ public class TelemetryStore {
       }
     }
     enforceGlobalCeiling();
+    fireTelemetryHints(logs, StoredLog::resourceAttributes);
   }
 
   public void addMetrics(Collection<MetricPoint> points) {
@@ -125,6 +135,31 @@ public class TelemetryStore {
       }
     }
     enforceGlobalCeiling();
+    fireTelemetryHints(points, MetricPoint::resourceAttributes);
+  }
+
+  /**
+   * Fire one debounce-able {@code TELEMETRY} hint per distinct scoped workspace touched by this
+   * batch — unscoped records ({@link #UNSCOPED_KEY}) produce no hint (nothing subscribes to them).
+   * Deduped so a 1000-span batch for one workspace is one hint, not a thousand async events.
+   */
+  private <T> void fireTelemetryHints(
+      Collection<T> records, java.util.function.Function<T, Map<String, String>> attributes) {
+    if (changePublisher == null || records.isEmpty()) {
+      return;
+    }
+    Set<Map.Entry<String, String>> scopes = new HashSet<>();
+    for (T record : records) {
+      Map<String, String> attrs = attributes.apply(record);
+      String repoId = attrs.get(REPOSITORY_ATTRIBUTE);
+      String workspaceId = attrs.get(WORKSPACE_ATTRIBUTE);
+      if (repoId != null && !repoId.isBlank() && workspaceId != null && !workspaceId.isBlank()) {
+        scopes.add(Map.entry(repoId, workspaceId));
+      }
+    }
+    for (Map.Entry<String, String> scope : scopes) {
+      changePublisher.fire(scope.getKey(), scope.getValue(), WorkspaceChangeHint.Topic.TELEMETRY);
+    }
   }
 
   /** Snapshot of the workspace's buffered spans, oldest first. */

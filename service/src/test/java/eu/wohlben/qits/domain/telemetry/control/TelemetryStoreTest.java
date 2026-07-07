@@ -7,8 +7,12 @@ import eu.wohlben.qits.domain.telemetry.dto.MetricPoint;
 import eu.wohlben.qits.domain.telemetry.dto.SpanEvent;
 import eu.wohlben.qits.domain.telemetry.dto.StoredLog;
 import eu.wohlben.qits.domain.telemetry.dto.StoredSpan;
+import eu.wohlben.qits.domain.workspace.control.WorkspaceChangeHint;
+import eu.wohlben.qits.domain.workspace.control.WorkspaceChangeHint.Topic;
+import eu.wohlben.qits.domain.workspace.control.WorkspaceChangePublisher;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CopyOnWriteArrayList;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -57,6 +61,62 @@ class TelemetryStoreTest {
       String name, double value, Map<String, String> attributes, Map<String, String> resource) {
     return new MetricPoint(
         name, "", "By", "GAUGE", value, 1_000_000_000L, attributes, "svc", resource, 1L);
+  }
+
+  /** Overrides {@link WorkspaceChangePublisher#fire} to record instead of routing through CDI. */
+  private static final class RecordingPublisher extends WorkspaceChangePublisher {
+    final List<WorkspaceChangeHint> fired = new CopyOnWriteArrayList<>();
+
+    @Override
+    public void fire(String repoId, String workspaceId, Topic topic) {
+      fired.add(new WorkspaceChangeHint(repoId, workspaceId, topic));
+    }
+  }
+
+  @Test
+  void appendingScopedTelemetryFiresOneTelemetryHintPerWorkspace() {
+    RecordingPublisher publisher = new RecordingPublisher();
+    store.changePublisher = publisher;
+
+    store.addSpans(
+        List.of(
+            span("t1", "a", qitsAttributes("repo", "wt"), 1),
+            span("t2", "b", qitsAttributes("repo", "wt"), 2)));
+    store.addLogs(List.of(log("hi", qitsAttributes("repo", "wt"), 3)));
+    store.addMetrics(List.of(metric("m", 1.0, Map.of(), qitsAttributes("repo", "wt"))));
+
+    // Two spans for one workspace coalesce to one hint; each append method fires once → 3 total.
+    assertEquals(3, publisher.fired.size());
+    assertTrue(publisher.fired.stream().allMatch(h -> h.topic() == Topic.TELEMETRY));
+    assertTrue(
+        publisher.fired.stream()
+            .allMatch(h -> h.repoId().equals("repo") && h.workspaceId().equals("wt")));
+  }
+
+  @Test
+  void aBatchSpanningTwoWorkspacesFiresAHintForEach() {
+    RecordingPublisher publisher = new RecordingPublisher();
+    store.changePublisher = publisher;
+
+    store.addSpans(
+        List.of(
+            span("t1", "a", qitsAttributes("repo", "wt-a"), 1),
+            span("t2", "b", qitsAttributes("repo", "wt-b"), 2)));
+
+    assertEquals(2, publisher.fired.size());
+    assertTrue(publisher.fired.stream().anyMatch(h -> h.workspaceId().equals("wt-a")));
+    assertTrue(publisher.fired.stream().anyMatch(h -> h.workspaceId().equals("wt-b")));
+  }
+
+  @Test
+  void unscopedTelemetryFiresNoHint() {
+    RecordingPublisher publisher = new RecordingPublisher();
+    store.changePublisher = publisher;
+
+    // No qits.repository.id / qits.workspace.id → lands in the unscoped bucket, nothing subscribes.
+    store.addLogs(List.of(log("orphan", Map.of("service.name", "svc"), 1)));
+
+    assertTrue(publisher.fired.isEmpty());
   }
 
   @Test
