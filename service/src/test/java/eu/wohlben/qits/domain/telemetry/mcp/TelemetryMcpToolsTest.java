@@ -75,7 +75,7 @@ public class TelemetryMcpToolsTest {
   private String createRepository(String projectId) {
     return given()
         .contentType(ContentType.JSON)
-        .body(new ProjectController.CreateProjectRepositoryRequest(fixtureUrl, null))
+        .body(new ProjectController.CreateProjectRepositoryRequest(fixtureUrl, null, null))
         .post("/api/projects/" + projectId + "/repositories")
         .then()
         .statusCode(200)
