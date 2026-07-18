@@ -12,9 +12,11 @@ import io.opentelemetry.proto.collector.trace.v1.ExportTraceServiceRequest;
 import io.opentelemetry.proto.collector.trace.v1.ExportTraceServiceResponse;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.Consumes;
+import jakarta.ws.rs.HeaderParam;
 import jakarta.ws.rs.POST;
 import jakarta.ws.rs.Path;
 import jakarta.ws.rs.Produces;
+import jakarta.ws.rs.core.HttpHeaders;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.util.zip.GZIPInputStream;
@@ -30,6 +32,10 @@ import org.eclipse.microprofile.openapi.annotations.Operation;
  *
  * <p>Hidden from the OpenAPI document: these are wire-protocol endpoints for OTel SDKs, not part of
  * the JSON API the generated Angular client consumes.
+ *
+ * <p>When qits itself runs as a managed daemon, every export is additionally teed byte-verbatim to
+ * the parent qits via {@link OtelForwarder} — before decoding, so the forward carries the exact
+ * wire bytes (still gzipped if the exporter compressed them).
  */
 @Path("otel/v1")
 @Consumes(OtelReceiverResource.PROTOBUF)
@@ -42,10 +48,16 @@ public class OtelReceiverResource {
 
   @Inject TelemetryStore store;
 
+  @Inject OtelForwarder forwarder;
+
   @POST
   @Path("/traces")
   @Operation(hidden = true)
-  public byte[] traces(byte[] body) {
+  public byte[] traces(
+      @HeaderParam(HttpHeaders.CONTENT_TYPE) String contentType,
+      @HeaderParam("Content-Encoding") String contentEncoding,
+      byte[] body) {
+    forwarder.forward("traces", contentType, contentEncoding, body);
     ExportTraceServiceRequest request = parse(body, ExportTraceServiceRequest::parseFrom);
     store.addSpans(decoder.decodeSpans(request, System.currentTimeMillis()));
     return ExportTraceServiceResponse.getDefaultInstance().toByteArray();
@@ -54,7 +66,11 @@ public class OtelReceiverResource {
   @POST
   @Path("/logs")
   @Operation(hidden = true)
-  public byte[] logs(byte[] body) {
+  public byte[] logs(
+      @HeaderParam(HttpHeaders.CONTENT_TYPE) String contentType,
+      @HeaderParam("Content-Encoding") String contentEncoding,
+      byte[] body) {
+    forwarder.forward("logs", contentType, contentEncoding, body);
     ExportLogsServiceRequest request = parse(body, ExportLogsServiceRequest::parseFrom);
     store.addLogs(decoder.decodeLogs(request, System.currentTimeMillis()));
     return ExportLogsServiceResponse.getDefaultInstance().toByteArray();
@@ -63,7 +79,11 @@ public class OtelReceiverResource {
   @POST
   @Path("/metrics")
   @Operation(hidden = true)
-  public byte[] metrics(byte[] body) {
+  public byte[] metrics(
+      @HeaderParam(HttpHeaders.CONTENT_TYPE) String contentType,
+      @HeaderParam("Content-Encoding") String contentEncoding,
+      byte[] body) {
+    forwarder.forward("metrics", contentType, contentEncoding, body);
     ExportMetricsServiceRequest request = parse(body, ExportMetricsServiceRequest::parseFrom);
     store.addMetrics(decoder.decodeMetrics(request, System.currentTimeMillis()));
     return ExportMetricsServiceResponse.getDefaultInstance().toByteArray();
