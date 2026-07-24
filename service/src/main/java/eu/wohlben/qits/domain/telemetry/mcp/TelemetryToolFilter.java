@@ -11,7 +11,7 @@ import java.util.Set;
 /**
  * Exposes the telemetry tools only to sessions scoped all the way down to a workspace (repository
  * <em>and</em> workspace narrowing present): telemetry is bucketed per workspace, so a broader
- * session has nothing it may query. Mirrors {@code RepositoryActionToolFilter}, fails closed.
+ * session has nothing it may query. Fails closed.
  */
 @ApplicationScoped
 public class TelemetryToolFilter implements ToolFilter {
