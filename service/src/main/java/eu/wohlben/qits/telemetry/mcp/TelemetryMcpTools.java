@@ -1,9 +1,6 @@
 package eu.wohlben.qits.telemetry.mcp;
 
 import eu.wohlben.qits.telemetry.error.NotFoundException;
-import eu.wohlben.qits.domain.repository.mcp.ProjectScope;
-import eu.wohlben.qits.domain.repository.mcp.ProjectScopeGuard;
-import eu.wohlben.qits.domain.repository.persistence.WorkspaceRepository;
 import eu.wohlben.qits.telemetry.control.TelemetryQueryService;
 import eu.wohlben.qits.telemetry.dto.TelemetryErrorGroupDto;
 import eu.wohlben.qits.telemetry.dto.TelemetryLogDto;
@@ -15,6 +12,7 @@ import io.quarkiverse.mcp.server.Tool;
 import io.quarkiverse.mcp.server.ToolArg;
 import io.quarkiverse.mcp.server.WrapBusinessError;
 import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.enterprise.inject.Instance;
 import jakarta.inject.Inject;
 import jakarta.transaction.Transactional;
 import java.util.List;
@@ -31,18 +29,24 @@ import java.util.List;
  * agent launch. {@link TelemetryToolFilter} hides these tools from any session not scoped that far
  * down, and every call re-validates the scope, so an agent can only ever see its own workspace's
  * telemetry.
+ *
+ * <p>The two validations reach outside this context and are therefore ports the consuming
+ * application implements: {@link RepositoryScopeGuard} (is the repository in the session's
+ * project?) and {@link WorkspaceLookup} (is the workspace still an active one of that repository?).
+ * Both are optional and both fail closed — without them these tools are neither listed nor
+ * callable. Telemetry ingest and the REST query surface are unaffected.
  */
 @ApplicationScoped
 @WrapBusinessError
 public class TelemetryMcpTools {
 
-  @Inject ProjectScope projectScope;
+  @Inject RepositoryScope repositoryScope;
 
-  @Inject ProjectScopeGuard scopeGuard;
+  @Inject Instance<RepositoryScopeGuard> scopeGuard;
 
   @Inject WorkspaceScope workspaceScope;
 
-  @Inject WorkspaceRepository workspaceRepository;
+  @Inject Instance<WorkspaceLookup> workspaceLookup;
 
   @Inject TelemetryQueryService queryService;
 
@@ -129,13 +133,26 @@ public class TelemetryMcpTools {
    * belong to the scoped project, and the workspace must (still) belong to that repository.
    */
   private Scope requireScope() {
-    String repoId = projectScope.repositoryId().orElseThrow(this::notScoped);
-    scopeGuard.requireRepoInProject(repoId);
+    if (!scopeGuard.isResolvable() || !workspaceLookup.isResolvable()) {
+      throw notWired();
+    }
+    String repoId = repositoryScope.repositoryId().orElseThrow(this::notScoped);
+    scopeGuard.get().requireRepoInProject(repoId);
     String workspaceId = workspaceScope.requireWorkspaceId();
-    workspaceRepository
-        .findActiveByRepositoryAndWorkspaceId(repoId, workspaceId)
-        .orElseThrow(() -> new NotFoundException("Workspace not found: " + workspaceId));
+    if (!workspaceLookup.get().isActiveWorkspace(repoId, workspaceId)) {
+      throw new NotFoundException("Workspace not found: " + workspaceId);
+    }
     return new Scope(repoId, workspaceId);
+  }
+
+  /**
+   * Fails closed when the application did not implement the scoping ports: the tools cannot
+   * validate what they'd be handing out, so they hand out nothing.
+   */
+  private RuntimeException notWired() {
+    return new NotFoundException(
+        "Telemetry tools are not available: this application provides no RepositoryScopeGuard /"
+            + " WorkspaceLookup, so an MCP session's scope cannot be validated.");
   }
 
   private RuntimeException notScoped() {

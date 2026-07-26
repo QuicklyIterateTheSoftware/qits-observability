@@ -13,7 +13,7 @@ import java.util.Optional;
  * only query that workspace's telemetry. Taken from the request, never a tool argument, so a
  * session can't widen its own scope.
  *
- * <p>Mirrors {@link eu.wohlben.qits.domain.repository.mcp.ProjectScope}; the scope is optional —
+ * <p>Mirrors {@link RepositoryScope}; the scope is optional —
  * {@link #workspaceId()} returns empty when absent, which the {@link TelemetryToolFilter} uses to
  * hide the telemetry tools from sessions that aren't pinned to a workspace.
  */

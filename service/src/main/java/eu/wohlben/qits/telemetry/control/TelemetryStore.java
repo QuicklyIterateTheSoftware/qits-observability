@@ -3,8 +3,6 @@ package eu.wohlben.qits.telemetry.control;
 import eu.wohlben.qits.telemetry.dto.MetricPoint;
 import eu.wohlben.qits.telemetry.dto.StoredLog;
 import eu.wohlben.qits.telemetry.dto.StoredSpan;
-import eu.wohlben.qits.domain.workspace.control.WorkspaceChangeHint;
-import eu.wohlben.qits.domain.workspace.control.WorkspaceChangePublisher;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import java.util.ArrayDeque;
@@ -65,7 +63,7 @@ public class TelemetryStore {
   long maxTotalBytes = 64L * 1024 * 1024;
 
   // Null in the plain-JUnit store test (it news up the store directly, no CDI); guarded before use.
-  @Inject WorkspaceChangePublisher changePublisher;
+  @Inject TelemetryChangePublisher changePublisher;
 
   private final ConcurrentHashMap<String, WorkspaceBuffer> buffers = new ConcurrentHashMap<>();
   private final AtomicLong totalBytes = new AtomicLong();
@@ -139,8 +137,8 @@ public class TelemetryStore {
   }
 
   /**
-   * Fire one debounce-able {@code TELEMETRY} hint per distinct scoped workspace touched by this
-   * batch — unscoped records ({@link #UNSCOPED_KEY}) produce no hint (nothing subscribes to them).
+   * Fire one debounce-able {@link TelemetryChanged} hint per distinct scoped workspace touched by
+   * this batch — unscoped records ({@link #UNSCOPED_KEY}) produce no hint (nothing subscribes to them).
    * Deduped so a 1000-span batch for one workspace is one hint, not a thousand async events.
    */
   private <T> void fireTelemetryHints(
@@ -158,7 +156,7 @@ public class TelemetryStore {
       }
     }
     for (Map.Entry<String, String> scope : scopes) {
-      changePublisher.fire(scope.getKey(), scope.getValue(), WorkspaceChangeHint.Topic.TELEMETRY);
+      changePublisher.fire(scope.getKey(), scope.getValue());
     }
   }
 
