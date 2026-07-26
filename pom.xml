@@ -1,0 +1,148 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <!-- Standalone parent for the extracted qits-observability repo (docs/epics/qits-observability
+         in the qits monorepo). The TELEMETRY context: the in-process OTLP/HTTP receiver, the
+         bounded in-memory per-workspace buffer it fills, the query surface over that buffer (REST
+         for the UI, MCP tools for agents), the upstream tee, and the managed-app config relay.
+         Everything that produces telemetry — the workspaces, containers and services being
+         observed — belongs to their own contexts and is deliberately absent.
+
+         DELIBERATELY ITS OWN GAV, for the reason qits-workspaces states: the qits-workspace-daemon
+         extraction could keep eu.wohlben:qits because its child artifactId (`workspace-daemon`) is
+         globally unique. That does not hold here — the child directory is `service`, and installing
+         eu.wohlben:service:1.0.0-SNAPSHOT would clobber the monorepo's jar in the shared ~/.m2 that
+         every workspace container mounts.
+
+         REPO NAME AND MODULE NAME DIFFER ON PURPOSE. `qits-observability` is the submodule (the
+         bounded context, the deployable, the gateway route); `qits-telemetry` is the maven module
+         and java package inside it (the thing the context is made of). Settled in the superproject
+         as commit 1919396 "Settle the observability naming question" — both names, at different
+         levels. The seed README's `qits-otel` is retired.
+
+         ONE CHILD MODULE, and the directory is `service/` rather than anything more descriptive:
+         this is the one qits context whose business logic lives entirely in the monorepo's
+         `service` module (there is no domain/telemetry), and the replayed git history is anchored
+         to those paths. Renaming the directory would break `git log --follow` across the
+         extraction, which is the whole point of replaying rather than copying. Only the coordinates
+         are namespaced.
+
+         Versions that must stay in step with qits (Quarkus platform, JDK release, the MCP server
+         extension, opentelemetry-proto) are duplicated here on purpose: a clone of THIS repo alone
+         must build, with no monorepo and no parent to inherit from.
+
+         Trimmed to what this module actually needs. The monorepo's app-wide machinery is
+         intentionally omitted: spotless, the :8080 dev-mode port guard, isolated-test surefire
+         chunking, enforcer, the derive-fixture-bares antrun step, the maven build-cache extension,
+         and the mandatory -Dqits.variant=oauth|forwardauth|local auth profiles. So is Flyway and
+         any datasource: this context owns no tables (migration-plan.md §3.6 — the store is the
+         in-memory, deliberately ephemeral TelemetryStore). -->
+    <groupId>eu.wohlben.qits</groupId>
+    <artifactId>qits-observability</artifactId>
+    <version>1.0.0-SNAPSHOT</version>
+    <packaging>pom</packaging>
+    <name>qits-observability</name>
+
+    <modules>
+        <module>service</module>
+    </modules>
+
+    <properties>
+        <maven.compiler.release>25</maven.compiler.release>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
+
+        <quarkus.platform.artifact-id>quarkus-bom</quarkus.platform.artifact-id>
+        <quarkus.platform.group-id>io.quarkus.platform</quarkus.platform.group-id>
+        <quarkus.platform.version>3.34.6</quarkus.platform.version>
+
+        <!-- Not in the platform BOM, so both are pinned here, matching the monorepo's service/pom
+             comment: mcp-server 1.13.0 is built against Quarkus 3.33.x (≈ our 3.34.6), and
+             opentelemetry-proto's "alpha" refers to Java API stability only — the OTLP wire format
+             itself is Stable. Don't auto-bump either. -->
+        <mcp-server.version>1.13.0</mcp-server.version>
+        <opentelemetry-proto.version>1.7.0-alpha</opentelemetry-proto.version>
+
+        <compiler-plugin.version>3.15.0</compiler-plugin.version>
+        <surefire-plugin.version>3.5.4</surefire-plugin.version>
+        <failsafe-plugin.version>3.5.4</failsafe-plugin.version>
+        <jandex-plugin.version>3.4.0</jandex-plugin.version>
+
+        <!-- Surefire's @{argLine} has no value unless something (jacoco/quarkus) sets it. -->
+        <argLine/>
+    </properties>
+
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>${quarkus.platform.group-id}</groupId>
+                <artifactId>${quarkus.platform.artifact-id}</artifactId>
+                <version>${quarkus.platform.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+            <dependency>
+                <groupId>io.quarkiverse.mcp</groupId>
+                <artifactId>quarkus-mcp-server-http</artifactId>
+                <version>${mcp-server.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.quarkiverse.mcp</groupId>
+                <artifactId>quarkus-mcp-server-test</artifactId>
+                <version>${mcp-server.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.opentelemetry.proto</groupId>
+                <artifactId>opentelemetry-proto</artifactId>
+                <version>${opentelemetry-proto.version}</version>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+
+    <build>
+        <pluginManagement>
+            <plugins>
+                <plugin>
+                    <groupId>${quarkus.platform.group-id}</groupId>
+                    <artifactId>quarkus-maven-plugin</artifactId>
+                    <version>${quarkus.platform.version}</version>
+                </plugin>
+                <plugin>
+                    <artifactId>maven-compiler-plugin</artifactId>
+                    <version>${compiler-plugin.version}</version>
+                    <configuration>
+                        <parameters>true</parameters>
+                        <!-- The monorepo disables incremental compilation reactor-wide (stale
+                             MapStruct *Impl classes). Kept for parity even though this context has
+                             no mappers, so a mapper added later doesn't reintroduce the bug. -->
+                        <useIncrementalCompilation>false</useIncrementalCompilation>
+                    </configuration>
+                </plugin>
+                <plugin>
+                    <artifactId>maven-surefire-plugin</artifactId>
+                    <version>${surefire-plugin.version}</version>
+                </plugin>
+                <plugin>
+                    <artifactId>maven-failsafe-plugin</artifactId>
+                    <version>${failsafe-plugin.version}</version>
+                </plugin>
+                <plugin>
+                    <groupId>io.smallrye</groupId>
+                    <artifactId>jandex-maven-plugin</artifactId>
+                    <version>${jandex-plugin.version}</version>
+                    <executions>
+                        <execution>
+                            <id>make-index</id>
+                            <goals>
+                                <goal>jandex</goal>
+                            </goals>
+                        </execution>
+                    </executions>
+                </plugin>
+            </plugins>
+        </pluginManagement>
+    </build>
+</project>
