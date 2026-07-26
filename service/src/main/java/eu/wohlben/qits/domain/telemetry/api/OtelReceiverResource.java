@@ -33,7 +33,7 @@ import org.eclipse.microprofile.openapi.annotations.Operation;
  * <p>Hidden from the OpenAPI document: these are wire-protocol endpoints for OTel SDKs, not part of
  * the JSON API the generated Angular client consumes.
  *
- * <p>When qits itself runs as a managed daemon, every export is additionally teed byte-verbatim to
+ * <p>When qits itself runs as a managed service, every export is additionally teed byte-verbatim to
  * the parent qits via {@link OtelForwarder} — before decoding, so the forward carries the exact
  * wire bytes (still gzipped if the exporter compressed them).
  */

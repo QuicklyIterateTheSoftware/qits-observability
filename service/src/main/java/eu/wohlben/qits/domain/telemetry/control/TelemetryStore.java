@@ -34,7 +34,7 @@ import org.jboss.logging.Logger;
  *
  * <p>Bounding is two-tier: per-workspace count caps (spans/logs/metric series) enforced inside the
  * bucket monitor, and a global byte ceiling enforced afterwards by evicting the oldest records from
- * the <em>fattest</em> bucket — so one chatty daemon pays for its own volume instead of evicting a
+ * the <em>fattest</em> bucket — so one chatty service pays for its own volume instead of evicting a
  * quieter workspace's telemetry. Lock order is always {@code evictionLock → bucket monitor}, and
  * appenders never take {@code evictionLock} while holding a bucket monitor, so the two tiers can't
  * deadlock.
@@ -51,7 +51,7 @@ public class TelemetryStore {
   static final String WORKSPACE_ATTRIBUTE = "qits.workspace.id";
 
   // Package-visible so the plain-JUnit store test can shrink them; injected values come from
-  // qits.telemetry.* when running in Quarkus (defaults here, pattern of qits.daemons.*).
+  // qits.telemetry.* when running in Quarkus (defaults here, pattern of qits.services.*).
   @ConfigProperty(name = "qits.telemetry.max-spans-per-workspace", defaultValue = "5000")
   int maxSpansPerWorkspace = 5000;
 

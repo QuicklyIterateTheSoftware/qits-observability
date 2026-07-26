@@ -21,7 +21,7 @@ import java.util.List;
 
 /**
  * The telemetry query tools of the "repository" MCP server: structured access to the spans, logs
- * and metrics that instrumented processes (daemons launched with the {@code otel} toggle) exported
+ * and metrics that instrumented processes (services launched with the {@code otel} toggle) exported
  * into qits' in-process OTLP receiver. This beats log scraping because exceptions arrive as
  * structured span events with stack traces, correlated by trace id.
  *

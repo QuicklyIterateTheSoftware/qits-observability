@@ -11,7 +11,7 @@ import org.eclipse.microprofile.config.inject.ConfigProperty;
 import org.jboss.logging.Logger;
 
 /**
- * The upstream half of the OTLP tee: when qits itself runs as a managed daemon, the supervising
+ * The upstream half of the OTLP tee: when qits itself runs as a managed service, the supervising
  * qits injects {@code OTEL_EXPORTER_OTLP_ENDPOINT} (surfaced by MicroProfile Config as {@code
  * otel.exporter.otlp.endpoint}) and everything the local receiver ingests — the child's own SPA
  * plus anything else exporting to it — is forwarded byte-verbatim to the parent as well, so both

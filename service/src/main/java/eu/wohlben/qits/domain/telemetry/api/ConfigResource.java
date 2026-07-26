@@ -15,7 +15,7 @@ import org.eclipse.microprofile.openapi.annotations.Operation;
  * managed-app convention qits imposes on the apps it manages, implemented by qits itself so a qits
  * deployment can manage the qits repository (see the fixture's {@code ConfigResource}, the
  * reference implementation this mirrors). The browser cannot read env vars, but this process can:
- * when qits runs as a managed daemon the supervising qits injects {@code OTEL_EXPORTER_OTLP_*} and
+ * when qits runs as a managed service the supervising qits injects {@code OTEL_EXPORTER_OTLP_*} and
  * {@code QITS_CAPTURE_ENDPOINT}, surfaced by MicroProfile Config as {@code
  * otel.exporter.otlp.endpoint} / {@code qits.capture.endpoint} etc.
  *
