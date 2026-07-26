@@ -7,9 +7,6 @@ import eu.wohlben.qits.telemetry.dto.MetricPoint;
 import eu.wohlben.qits.telemetry.dto.SpanEvent;
 import eu.wohlben.qits.telemetry.dto.StoredLog;
 import eu.wohlben.qits.telemetry.dto.StoredSpan;
-import eu.wohlben.qits.domain.workspace.control.WorkspaceChangeHint;
-import eu.wohlben.qits.domain.workspace.control.WorkspaceChangeHint.Topic;
-import eu.wohlben.qits.domain.workspace.control.WorkspaceChangePublisher;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -63,13 +60,13 @@ class TelemetryStoreTest {
         name, "", "By", "GAUGE", value, 1_000_000_000L, attributes, "svc", resource, 1L);
   }
 
-  /** Overrides {@link WorkspaceChangePublisher#fire} to record instead of routing through CDI. */
-  private static final class RecordingPublisher extends WorkspaceChangePublisher {
-    final List<WorkspaceChangeHint> fired = new CopyOnWriteArrayList<>();
+  /** Overrides {@link TelemetryChangePublisher#fire} to record instead of routing through CDI. */
+  private static final class RecordingPublisher extends TelemetryChangePublisher {
+    final List<TelemetryChanged> fired = new CopyOnWriteArrayList<>();
 
     @Override
-    public void fire(String repoId, String workspaceId, Topic topic) {
-      fired.add(new WorkspaceChangeHint(repoId, workspaceId, topic));
+    public void fire(String repoId, String workspaceId) {
+      fired.add(new TelemetryChanged(repoId, workspaceId));
     }
   }
 
@@ -86,8 +83,9 @@ class TelemetryStoreTest {
     store.addMetrics(List.of(metric("m", 1.0, Map.of(), qitsAttributes("repo", "wt"))));
 
     // Two spans for one workspace coalesce to one hint; each append method fires once → 3 total.
+    // (The monorepo also asserted topic() == Topic.TELEMETRY; TelemetryChanged has no topic
+    // field — it IS the telemetry topic — so the event type carries that assertion now.)
     assertEquals(3, publisher.fired.size());
-    assertTrue(publisher.fired.stream().allMatch(h -> h.topic() == Topic.TELEMETRY));
     assertTrue(
         publisher.fired.stream()
             .allMatch(h -> h.repoId().equals("repo") && h.workspaceId().equals("wt")));

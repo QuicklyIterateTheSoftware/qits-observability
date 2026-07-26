@@ -26,7 +26,7 @@
          ONE CHILD MODULE, and the directory is `service/` rather than anything more descriptive:
          this is the one qits context whose business logic lives entirely in the monorepo's
          `service` module (there is no domain/telemetry), and the replayed git history is anchored
-         to those paths. Renaming the directory would break `git log --follow` across the
+         to those paths. Renaming the directory would break `git log` history-following across the
          extraction, which is the whole point of replaying rather than copying. Only the coordinates
          are namespaced.
 

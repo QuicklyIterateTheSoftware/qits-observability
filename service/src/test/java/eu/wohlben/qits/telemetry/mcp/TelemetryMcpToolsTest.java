@@ -1,11 +1,8 @@
 package eu.wohlben.qits.telemetry.mcp;
 
-import static io.restassured.RestAssured.given;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import eu.wohlben.qits.domain.project.api.ProjectController;
-import eu.wohlben.qits.domain.repository.mcp.ProjectScope;
 import eu.wohlben.qits.telemetry.TelemetryFixtures;
 import eu.wohlben.qits.telemetry.control.TelemetryDecoder;
 import eu.wohlben.qits.telemetry.control.TelemetryStore;
@@ -14,7 +11,6 @@ import io.quarkiverse.mcp.server.ToolResponse;
 import io.quarkiverse.mcp.server.test.McpAssured;
 import io.quarkiverse.mcp.server.test.McpAssured.McpStreamableTestClient;
 import io.quarkus.test.junit.QuarkusTest;
-import io.restassured.http.ContentType;
 import jakarta.inject.Inject;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -25,6 +21,11 @@ import org.junit.jupiter.api.Test;
  * Verifies the telemetry tools on the "repository" MCP server: they exist only for sessions
  * narrowed to repository + workspace, they answer from the session's workspace bucket only, and
  * error evidence is grouped by trace with correlated logs.
+ *
+ * <p>Scope setup goes through {@link FakeRepositoryScopeGuard} / {@link FakeWorkspaceLookup}
+ * instead of the monorepo's real {@code POST /api/projects}, {@code .../repositories} and
+ * {@code .../workspaces} calls: those endpoints, their databases and the {@code testing-repo.git}
+ * fixture all belong to qits-projects and qits-workspaces. Every assertion below is unchanged.
  */
 @QuarkusTest
 public class TelemetryMcpToolsTest {
@@ -33,46 +34,26 @@ public class TelemetryMcpToolsTest {
 
   @Inject TelemetryDecoder decoder;
 
-  private final String fixtureUrl;
+  @Inject FakeRepositoryScopeGuard scopeGuard;
 
-  public TelemetryMcpToolsTest() throws Exception {
-    fixtureUrl = getClass().getResource("/fixtures/testing-repo.git").toURI().getPath();
-  }
+  @Inject FakeWorkspaceLookup workspaces;
 
   @BeforeEach
   void resetStore() {
     store.clear();
+    scopeGuard.reset();
+    workspaces.reset();
   }
 
-  private String createProject(String name) {
-    return given()
-        .contentType(ContentType.JSON)
-        .body(new ProjectController.CreateProjectRequest(name, null, null, null))
-        .post("/api/projects")
-        .then()
-        .statusCode(200)
-        .extract()
-        .path("project.id");
+  /** Registers a repository as living in the session's project (the projects context's answer). */
+  private String createRepository(String repoId) {
+    scopeGuard.allow(repoId);
+    return repoId;
   }
 
-  private String createRepository(String projectId) {
-    return given()
-        .contentType(ContentType.JSON)
-        .body(new ProjectController.CreateProjectRepositoryRequest(fixtureUrl, null, null))
-        .post("/api/projects/" + projectId + "/repositories")
-        .then()
-        .statusCode(200)
-        .extract()
-        .path("repository.id");
-  }
-
+  /** Registers an active workspace of that repository (the workspaces context's answer). */
   private void createWorkspace(String repoId, String workspaceId) {
-    given()
-        .contentType(ContentType.JSON)
-        .body(Map.of("id", workspaceId, "parent", "master"))
-        .post("/api/repositories/" + repoId + "/workspaces")
-        .then()
-        .statusCode(200);
+    workspaces.register(repoId, workspaceId);
   }
 
   /** Seeds the store through the real decoder — same records the receiver would produce. */
@@ -99,15 +80,14 @@ public class TelemetryMcpToolsTest {
         .collect(Collectors.joining("\n"));
   }
 
-  private McpStreamableTestClient client(String projectId, String repoId, String workspaceId) {
+  private McpStreamableTestClient client(String repoId, String workspaceId) {
     return McpAssured.newStreamableClient()
         .setMcpPath("/mcp/repository")
         .setAdditionalHeaders(
             msg -> {
               io.vertx.core.MultiMap headers = io.vertx.core.MultiMap.caseInsensitiveMultiMap();
-              headers.add(ProjectScope.PROJECT_HEADER, projectId);
               if (repoId != null) {
-                headers.add(ProjectScope.REPOSITORY_HEADER, repoId);
+                headers.add(RepositoryScope.REPOSITORY_HEADER, repoId);
               }
               if (workspaceId != null) {
                 headers.add(WorkspaceScope.WORKSPACE_HEADER, workspaceId);
@@ -120,12 +100,11 @@ public class TelemetryMcpToolsTest {
 
   @Test
   public void errorsGroupByTraceAndTraceReturnsCorrelatedLogs() {
-    String project = createProject("Telemetry");
-    String repoId = createRepository(project);
+    String repoId = createRepository("repo-errors");
     createWorkspace(repoId, "work");
     seedErrorTrace(repoId, "work", TelemetryFixtures.TRACE_ID_A, TelemetryFixtures.SPAN_ID_A);
     seedErrorTrace(repoId, "work", TelemetryFixtures.TRACE_ID_B, TelemetryFixtures.SPAN_ID_B);
-    var client = client(project, repoId, "work");
+    var client = client(repoId, "work");
 
     client
         .when()
@@ -155,12 +134,11 @@ public class TelemetryMcpToolsTest {
 
   @Test
   public void aSessionOnlySeesItsOwnWorkspacesTelemetry() {
-    String project = createProject("Telemetry Isolation");
-    String repoId = createRepository(project);
+    String repoId = createRepository("repo-isolation");
     createWorkspace(repoId, "mine");
     createWorkspace(repoId, "other");
     seedErrorTrace(repoId, "other", TelemetryFixtures.TRACE_ID_B, TelemetryFixtures.SPAN_ID_B);
-    var client = client(project, repoId, "mine");
+    var client = client(repoId, "mine");
 
     client
         .when()
@@ -179,15 +157,14 @@ public class TelemetryMcpToolsTest {
 
   @Test
   public void slowSpansSearchLogsAndMetricsAnswerFromTheScopedBucket() {
-    String project = createProject("Telemetry Queries");
-    String repoId = createRepository(project);
+    String repoId = createRepository("repo-queries");
     createWorkspace(repoId, "work");
     seedErrorTrace(repoId, "work", TelemetryFixtures.TRACE_ID_A, TelemetryFixtures.SPAN_ID_A);
     store.addMetrics(
         decoder.decodeMetrics(
             TelemetryFixtures.metricsRequest("svc", repoId, "work", 42.5, 7),
             System.currentTimeMillis()));
-    var client = client(project, repoId, "work");
+    var client = client(repoId, "work");
 
     client
         .when()
@@ -214,20 +191,21 @@ public class TelemetryMcpToolsTest {
 
   @Test
   public void telemetryToolsAreHiddenWithoutWorkspaceScope() {
-    String project = createProject("Telemetry Filter");
-    String repoId = createRepository(project);
-    var repoOnly = client(project, repoId, null);
+    String repoId = createRepository("repo-filter");
+    var repoOnly = client(repoId, null);
     repoOnly
         .when()
         .toolsList(
             page -> {
               var names = page.tools().stream().map(t -> t.name()).collect(Collectors.toSet());
-              assertTrue(names.contains("listBranches"), "sanity: " + names);
+              // The monorepo also asserted listBranches is listed, as a sanity check that the
+              // server itself answered. That tool is RepositoryMcpTools', i.e. qits-projects', and
+              // is not in this repo; the positive half of this test (below) covers the same thing.
               assertFalse(names.contains("telemetryErrors"), "must be hidden: " + names);
             })
         .thenAssertResults();
 
-    var workspaceScoped = client(project, repoId, "work");
+    var workspaceScoped = client(repoId, "work");
     workspaceScoped
         .when()
         .toolsList(
