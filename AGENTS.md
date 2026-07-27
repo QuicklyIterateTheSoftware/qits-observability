@@ -78,10 +78,24 @@ resolved — the single role check the system has (`qits.auth.required-role`) is
   `TelemetryDecoder` rather than hand-constructing `StoredSpan`s where the decoding is part of what
   you're asserting.
 - `src/test/resources/application.properties` re-provides `quarkus.rest.path=/api` and the MCP
-  root-path. Both live in the monorepo's app shell, which this repo does not have. Delete either and
-  every REST test 404s / every MCP test fails to connect.
+  root-path. Delete either and every REST test 404s / every MCP test fails to connect. These are
+  **no longer the only copy**: `src/main/resources/application.properties` now carries them for the
+  packaged process. Change one and you must change both — a suite that is green because the *test*
+  copy is right proves nothing about what ships.
+- `OpenApiSchemaExportTest` writes `docs/openapi.yml` as a side effect. Regenerate and commit it
+  whenever the REST surface changes:
+
+      ./mvnw -pl service test -Dtest=OpenApiSchemaExportTest
+
+  It runs as a `@QuarkusTest`, so **the test classpath is indexed too**: any `@Path` resource under
+  `src/test` lands in the committed document unless it is `@Operation(hidden = true)`. That is why
+  `IdentityEchoResource` carries the annotation. The document should hold exactly the five
+  workspace-telemetry query operations — ingest and `/api/config.json` are hidden on purpose.
 - There are no integration tests and nothing here needs docker, so `mvn verify` is runnable
   anywhere. Keep it that way.
+- **A `Failed to start quarkus` / `Port already bound: 8081` failure is the known flake**
+  (`migration-plan.md` §9 item 14), not your change: `@QuarkusTest` restarts race for the test port.
+  Re-run before investigating.
 
 ## What is not ours to change
 

@@ -38,8 +38,14 @@ logic already lived entirely in the monorepo's `service` module (migration-plan.
 no `domain/telemetry` to replay. The directory is still called `service/` because the replayed git
 history is anchored to `service/src/**`.
 
-A library jar, not an app: a consuming Quarkus application pulls it in and gets the receiver, the
-routes and the tools.
+**An application, not a library jar.** `service/` is augmented by the `quarkus-maven-plugin` and
+produces `service/target/quarkus-app/quarkus-run.jar` — a process that receives OTLP on its own
+port. It was extracted as a library on the assumption that some consuming Quarkus application would
+pull it in and gain the receiver; no such application was ever written, and under the gateway
+topology none will be. A receiver that cannot be started is not a receiver.
+
+    ./mvnw verify
+    java -jar service/target/quarkus-app/quarkus-run.jar   # :8080, ingest on /api/otel/v1/*
 
 ## What it owns, and what it deliberately does not
 
@@ -94,14 +100,22 @@ dropped one self-heals on the next.
 
 ## Deploying it
 
-A standalone deployable must:
+`service/src/main/resources/application.properties` now carries what a deployment needs and this
+repo can decide — `quarkus.rest.path=/api`, the MCP root-path (without which the process does not
+boot at all), the 64M body limit, and the OpenAPI/swagger-ui settings. Read that file before adding
+anything here; it explains why each line is load-bearing.
 
-- set `quarkus.rest.path=/api` — every route below assumes it;
-- set `quarkus.mcp.server.repository.http.root-path=/mcp/repository` if it wants the MCP tools;
+What is still the deployment's to provide:
+
 - allow-list `/api/otel/v1/*` for unauthenticated access. That is the ingest surface, and the
   exporters hitting it are SDKs inside workspace containers, not sessions. In the monorepo this
-  lives in `auth/core`'s `PublicPaths`. Note the wire-body limit gates it too
-  (`quarkus.http.limits.max-body-size`).
+  lives in `auth/core`'s `PublicPaths`; under the gateway it is `PublicPaths` there.
+- **point something at it.** Nothing does today. The overlay that set `OTEL_EXPORTER_OTLP_ENDPOINT`
+  on launched services (`OtelEnvironment` in the monorepo) was dropped during the daemon extraction
+  as dead code, and the live launch path — the daemon's `ServiceSupervisor` — never had it: the
+  `otel:` toggle is parsed, round-tripped through `ConfigJson`, and never acted on. Until that is
+  rebuilt beside `ServiceSupervisor` and aimed at this service's address on `qits-net`, this
+  receiver has no senders. See `migration-deployables-plan.md` §4a in the superproject.
 
 Routes: `POST /api/otel/v1/{traces,logs,metrics}` (ingest), `GET
 /api/repositories/{repoId}/workspaces/{workspaceId}/telemetry/{errors,traces/{traceId},slow-spans,logs,metrics}`
