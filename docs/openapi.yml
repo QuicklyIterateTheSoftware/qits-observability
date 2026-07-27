@@ -161,17 +161,11 @@ components:
           items:
             $ref: "#/components/schemas/TelemetryLogDto"
 paths:
-  /api/repositories/{repoId}/workspaces/{workspaceId}/telemetry/errors:
+  /observability/api/telemetry/errors:
     get:
       parameters:
-      - name: repoId
-        in: path
-        required: true
-        schema:
-          type: string
-      - name: workspaceId
-        in: path
-        required: true
+      - name: repositoryId
+        in: query
         schema:
           type: string
       - name: sinceMinutes
@@ -179,6 +173,10 @@ paths:
         schema:
           type: integer
           format: int32
+      - name: workspaceId
+        in: query
+        schema:
+          type: string
       responses:
         "200":
           description: OK
@@ -189,20 +187,14 @@ paths:
       summary: Errors
       tags:
       - Workspace Telemetry Controller
-  /api/repositories/{repoId}/workspaces/{workspaceId}/telemetry/logs:
+  /observability/api/telemetry/logs:
     get:
       parameters:
-      - name: repoId
-        in: path
-        required: true
-        schema:
-          type: string
-      - name: workspaceId
-        in: path
-        required: true
-        schema:
-          type: string
       - name: query
+        in: query
+        schema:
+          type: string
+      - name: repositoryId
         in: query
         schema:
           type: string
@@ -215,6 +207,10 @@ paths:
         schema:
           type: integer
           format: int32
+      - name: workspaceId
+        in: query
+        schema:
+          type: string
       responses:
         "200":
           description: OK
@@ -225,20 +221,18 @@ paths:
       summary: Logs
       tags:
       - Workspace Telemetry Controller
-  /api/repositories/{repoId}/workspaces/{workspaceId}/telemetry/metrics:
+  /observability/api/telemetry/metrics:
     get:
       parameters:
-      - name: repoId
-        in: path
-        required: true
+      - name: name
+        in: query
+        schema:
+          type: string
+      - name: repositoryId
+        in: query
         schema:
           type: string
       - name: workspaceId
-        in: path
-        required: true
-        schema:
-          type: string
-      - name: name
         in: query
         schema:
           type: string
@@ -252,17 +246,11 @@ paths:
       summary: Metrics
       tags:
       - Workspace Telemetry Controller
-  /api/repositories/{repoId}/workspaces/{workspaceId}/telemetry/slow-spans:
+  /observability/api/telemetry/slow-spans:
     get:
       parameters:
-      - name: repoId
-        in: path
-        required: true
-        schema:
-          type: string
-      - name: workspaceId
-        in: path
-        required: true
+      - name: repositoryId
+        in: query
         schema:
           type: string
       - name: sinceMinutes
@@ -281,6 +269,10 @@ paths:
           type: integer
           format: int64
           default: 500
+      - name: workspaceId
+        in: query
+        schema:
+          type: string
       responses:
         "200":
           description: OK
@@ -291,22 +283,20 @@ paths:
       summary: Slow Spans
       tags:
       - Workspace Telemetry Controller
-  /api/repositories/{repoId}/workspaces/{workspaceId}/telemetry/traces/{traceId}:
+  /observability/api/telemetry/traces/{traceId}:
     get:
       parameters:
-      - name: repoId
-        in: path
-        required: true
-        schema:
-          type: string
       - name: traceId
         in: path
         required: true
         schema:
           type: string
+      - name: repositoryId
+        in: query
+        schema:
+          type: string
       - name: workspaceId
-        in: path
-        required: true
+        in: query
         schema:
           type: string
       responses:

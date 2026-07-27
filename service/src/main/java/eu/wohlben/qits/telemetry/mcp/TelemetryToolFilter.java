@@ -20,7 +20,7 @@ import java.util.Set;
 @ApplicationScoped
 public class TelemetryToolFilter implements ToolFilter {
 
-  /** The telemetry tools of the "repository" MCP server (see {@link TelemetryMcpTools}). */
+  /** The telemetry tools of the "observability" MCP server (see {@link TelemetryMcpTools}). */
   private static final Set<String> TELEMETRY_TOOLS =
       Set.of(
           "telemetryErrors",

@@ -19,8 +19,18 @@ import java.util.List;
 /**
  * The REST twins of the telemetry MCP tools, for the UI's workspace telemetry tab. Read-only JSON
  * over the same {@link TelemetryQueryService}, so humans and agents see identical answers.
+ *
+ * <p>The repository and the workspace are <em>scope</em>, not containment: this context owns
+ * neither, and buckets telemetry by the string ids an exporter stamped into its resource
+ * attributes. So they arrive as {@code ?repositoryId=&workspaceId=} filters rather than as path
+ * segments of another context's aggregate — {@code traceId} stays in the path because it is the
+ * identity of the thing being fetched.
+ *
+ * <p>Nothing here is an authorization boundary: an unknown or foreign scope selects a bucket that
+ * is simply empty. The scoping ports ({@code RepositoryScopeGuard} / {@code WorkspaceLookup}) guard
+ * the MCP surface, where the scope comes from the agent's connection rather than from the caller.
  */
-@Path("/repositories/{repoId}/workspaces/{workspaceId}/telemetry")
+@Path("/telemetry")
 @Produces(MediaType.APPLICATION_JSON)
 public class WorkspaceTelemetryController {
 
@@ -33,8 +43,8 @@ public class WorkspaceTelemetryController {
   @GET
   @Path("/errors")
   public ListTelemetryErrorsRequest.Response errors(
-      @PathParam("repoId") String repoId,
-      @PathParam("workspaceId") String workspaceId,
+      @QueryParam("repositoryId") String repoId,
+      @QueryParam("workspaceId") String workspaceId,
       @QueryParam("sinceMinutes") Integer sinceMinutes) {
     return new ListTelemetryErrorsRequest.Response(
         queryService.errors(repoId, workspaceId, sinceMinutes));
@@ -47,8 +57,8 @@ public class WorkspaceTelemetryController {
   @GET
   @Path("/traces/{traceId}")
   public GetTelemetryTraceRequest.Response trace(
-      @PathParam("repoId") String repoId,
-      @PathParam("workspaceId") String workspaceId,
+      @QueryParam("repositoryId") String repoId,
+      @QueryParam("workspaceId") String workspaceId,
       @PathParam("traceId") String traceId) {
     return new GetTelemetryTraceRequest.Response(queryService.trace(repoId, workspaceId, traceId));
   }
@@ -60,8 +70,8 @@ public class WorkspaceTelemetryController {
   @GET
   @Path("/slow-spans")
   public ListSlowSpansRequest.Response slowSpans(
-      @PathParam("repoId") String repoId,
-      @PathParam("workspaceId") String workspaceId,
+      @QueryParam("repositoryId") String repoId,
+      @QueryParam("workspaceId") String workspaceId,
       @QueryParam("thresholdMs") @DefaultValue("500") long thresholdMs,
       @QueryParam("sinceMinutes") Integer sinceMinutes,
       @QueryParam("sort") @DefaultValue("duration") String sort) {
@@ -80,8 +90,8 @@ public class WorkspaceTelemetryController {
   @GET
   @Path("/logs")
   public SearchTelemetryLogsRequest.Response logs(
-      @PathParam("repoId") String repoId,
-      @PathParam("workspaceId") String workspaceId,
+      @QueryParam("repositoryId") String repoId,
+      @QueryParam("workspaceId") String workspaceId,
       @QueryParam("query") String query,
       @QueryParam("service") String service,
       @QueryParam("sinceMinutes") Integer sinceMinutes) {
@@ -96,8 +106,8 @@ public class WorkspaceTelemetryController {
   @GET
   @Path("/metrics")
   public ListTelemetryMetricsRequest.Response metrics(
-      @PathParam("repoId") String repoId,
-      @PathParam("workspaceId") String workspaceId,
+      @QueryParam("repositoryId") String repoId,
+      @QueryParam("workspaceId") String workspaceId,
       @QueryParam("name") String name) {
     return new ListTelemetryMetricsRequest.Response(
         queryService.metrics(repoId, workspaceId, name));

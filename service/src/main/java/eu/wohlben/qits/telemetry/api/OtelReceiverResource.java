@@ -24,11 +24,11 @@ import org.eclipse.microprofile.openapi.annotations.Operation;
 
 /**
  * The in-process OTLP/HTTP receiver: the three standard export endpoints under {@code
- * /api/otel/v1/*} — SDKs pointed at {@code
- * OTEL_EXPORTER_OTLP_ENDPOINT=http://<host>:<port>/api/otel} append {@code /v1/<signal>}
- * themselves. Protobuf-only by design: qits pins every launched exporter to {@code http/protobuf}
- * via the injected env vars, so OTLP/JSON (which deviates from proto3 JSON) and gRPC are
- * deliberately not implemented.
+ * /observability/api/otel/v1/*} — SDKs pointed at {@code
+ * OTEL_EXPORTER_OTLP_ENDPOINT=http://<host>:<port>/observability/api/otel} append {@code
+ * /v1/<signal>} themselves. Protobuf-only by design: qits pins every launched exporter to {@code
+ * http/protobuf} via the injected env vars, so OTLP/JSON (which deviates from proto3 JSON) and gRPC
+ * are deliberately not implemented.
  *
  * <p>Hidden from the OpenAPI document: these are wire-protocol endpoints for OTel SDKs, not part of
  * the JSON API the generated Angular client consumes.

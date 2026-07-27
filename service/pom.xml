@@ -51,13 +51,13 @@
             <artifactId>quarkus-security</artifactId>
         </dependency>
         <dependency>
-            <!-- The JSON query surface (WorkspaceTelemetryController, ConfigResource) and the
-                 protobuf ingest routes (OtelReceiverResource). -->
+            <!-- The JSON query surface (WorkspaceTelemetryController) and the protobuf ingest
+                 routes (OtelReceiverResource). -->
             <groupId>io.quarkus</groupId>
             <artifactId>quarkus-rest-jackson</artifactId>
         </dependency>
         <dependency>
-            <!-- @Operation(hidden = true) on the wire-protocol + pre-bootstrap endpoints. -->
+            <!-- @Operation(hidden = true) on the wire-protocol endpoints. -->
             <groupId>io.quarkus</groupId>
             <artifactId>quarkus-smallrye-openapi</artifactId>
         </dependency>

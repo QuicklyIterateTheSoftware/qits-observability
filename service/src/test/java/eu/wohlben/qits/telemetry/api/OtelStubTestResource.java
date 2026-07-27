@@ -9,12 +9,15 @@ import java.util.Map;
 
 /**
  * A stub parent-qits OTLP collector on an ephemeral port, wired in as {@code
- * otel.exporter.otlp.endpoint} (the env-var-shaped key {@link OtelForwarder} and {@link
- * ConfigResource} read — the same key the supervising qits injects as {@code
- * OTEL_EXPORTER_OTLP_ENDPOINT}). Records the last request for assertions; answers 200 on {@code
- * /v1/traces} and 400 on {@code /v1/logs} so both upstream outcomes are observable. (Mirrors the
- * fixture's stub; qits' own OTel SDK stays dark via the main-config {@code
- * quarkus.otel.sdk.disabled=true}.)
+ * otel.exporter.otlp.endpoint} (the env-var-shaped key {@link OtelForwarder} reads — the same key
+ * the supervising qits injects as {@code OTEL_EXPORTER_OTLP_ENDPOINT}). Records the last request
+ * for assertions; answers 200 on {@code /v1/traces} and 400 on {@code /v1/logs} so both upstream
+ * outcomes are observable. (Mirrors the fixture's stub; qits' own OTel SDK stays dark via the
+ * main-config {@code quarkus.otel.sdk.disabled=true}.)
+ *
+ * <p>It also injected {@code otel.resource.attributes} / {@code otel.service.name} while {@code
+ * ConfigResource} lived here and relayed them to the SPA. That resource moved to qits-gateway, and
+ * the forwarder reads neither, so the stub no longer sets what nothing consumes.
  */
 public class OtelStubTestResource implements QuarkusTestResourceLifecycleManager {
 
@@ -55,10 +58,7 @@ public class OtelStubTestResource implements QuarkusTestResourceLifecycleManager
         });
     server.start();
     return Map.of(
-        "otel.exporter.otlp.endpoint", "http://localhost:" + server.getAddress().getPort(),
-        "otel.resource.attributes",
-            "qits.workspace.id=ws-1,qits.repository.id=repo-1,qits.command.id=cmd-1",
-        "otel.service.name", "qits-dev");
+        "otel.exporter.otlp.endpoint", "http://localhost:" + server.getAddress().getPort());
   }
 
   @Override

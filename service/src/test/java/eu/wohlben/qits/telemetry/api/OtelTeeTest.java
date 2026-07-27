@@ -66,7 +66,7 @@ class OtelTeeTest {
         .contentType(PROTOBUF)
         .body(body)
         .when()
-        .post("/api/otel/v1/traces")
+        .post("/observability/api/otel/v1/traces")
         .then()
         .statusCode(200);
 
@@ -94,7 +94,7 @@ class OtelTeeTest {
         .contentType(PROTOBUF)
         .body(body)
         .when()
-        .post("/api/otel/v1/logs")
+        .post("/observability/api/otel/v1/logs")
         .then()
         .statusCode(200);
 
@@ -127,7 +127,7 @@ class OtelTeeTest {
         .header("Content-Encoding", "gzip")
         .body(gzipped)
         .when()
-        .post("/api/otel/v1/traces")
+        .post("/observability/api/otel/v1/traces")
         .then()
         .statusCode(200);
 

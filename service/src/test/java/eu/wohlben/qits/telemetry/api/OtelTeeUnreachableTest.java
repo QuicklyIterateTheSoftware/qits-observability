@@ -46,7 +46,7 @@ class OtelTeeUnreachableTest {
         .contentType("application/x-protobuf")
         .body(body)
         .when()
-        .post("/api/otel/v1/traces")
+        .post("/observability/api/otel/v1/traces")
         .then()
         .statusCode(200);
 

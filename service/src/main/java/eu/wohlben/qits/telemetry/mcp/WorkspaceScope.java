@@ -7,10 +7,10 @@ import jakarta.inject.Inject;
 import java.util.Optional;
 
 /**
- * Resolves the workspace a "repository" MCP session is optionally scoped to — the third scope
- * dimension after project and repository, added for the telemetry tools: a workspace-launched agent
- * session carries {@code ?workspaceId=} in its MCP URL (see {@code AgentLaunchService}) and may
- * only query that workspace's telemetry. Taken from the request, never a tool argument, so a
+ * Resolves the workspace an MCP session is optionally scoped to — the third scope dimension after
+ * project and repository, added for the telemetry tools: a workspace-launched agent session carries
+ * {@code ?workspaceId=} in its MCP URL (see {@code AgentLaunchService}) and may only query that
+ * workspace's telemetry. Taken from the request, never a tool argument, so a
  * session can't widen its own scope.
  *
  * <p>Mirrors {@link RepositoryScope}; the scope is optional —

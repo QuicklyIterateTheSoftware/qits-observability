@@ -77,13 +77,14 @@ resolved — the single role check the system has (`qits.auth.required-role`) is
 - `TelemetryFixtures` builds real `Export*ServiceRequest` protobufs. Seed the store through the real
   `TelemetryDecoder` rather than hand-constructing `StoredSpan`s where the decoding is part of what
   you're asserting.
-- App-level config lives in `src/main/resources/application.properties` — `quarkus.rest.path=/api`,
+- App-level config lives in `src/main/resources/application.properties` —
+  `quarkus.rest.path=/observability/api`, `quarkus.http.non-application-root-path=/observability/q`,
   the MCP root-path, the body limit, the OpenAPI info — and **the tests inherit it**. Quarkus merges
   main's copy into the test config rather than letting `src/test/resources/application.properties`
   shadow it, so the suite exercises the values that actually ship. Never re-declare an app-level key
-  in test resources: the copy drifts, and the suite goes on asserting `/api/*` while the packaged
-  process serves something else. `src/test/resources/application.properties` is for values a test
-  run genuinely needs to be *different*, and today there are none.
+  in test resources: the copy drifts, and the suite goes on asserting `/observability/*` while the
+  packaged process serves something else. `src/test/resources/application.properties` is for values
+  a test run genuinely needs to be *different*, and today there are none.
 - `OpenApiSchemaExportTest` writes `docs/openapi.yml` as a side effect. Regenerate and commit it
   whenever the REST surface changes:
 
@@ -92,7 +93,7 @@ resolved — the single role check the system has (`qits.auth.required-role`) is
   It runs as a `@QuarkusTest`, so **the test classpath is indexed too**: any `@Path` resource under
   `src/test` lands in the committed document unless it is `@Operation(hidden = true)`. That is why
   `IdentityEchoResource` carries the annotation. The document should hold exactly the five
-  workspace-telemetry query operations — ingest and `/api/config.json` are hidden on purpose.
+  telemetry query operations — ingest is hidden on purpose.
 - There are no integration tests and nothing here needs docker, so `mvn verify` is runnable
   anywhere. Keep it that way.
 - **A `Failed to start quarkus` / `Port already bound: 8081` failure is the known flake**

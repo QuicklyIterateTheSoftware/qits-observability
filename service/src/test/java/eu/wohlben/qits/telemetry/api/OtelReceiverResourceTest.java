@@ -46,7 +46,7 @@ class OtelReceiverResourceTest {
             .contentType(PROTOBUF)
             .body(body)
             .when()
-            .post("/api/otel/v1/traces")
+            .post("/observability/api/otel/v1/traces")
             .then()
             .statusCode(200)
             .contentType(PROTOBUF)
@@ -78,7 +78,7 @@ class OtelReceiverResourceTest {
         .contentType(PROTOBUF)
         .body(body)
         .when()
-        .post("/api/otel/v1/logs")
+        .post("/observability/api/otel/v1/logs")
         .then()
         .statusCode(200)
         .contentType(PROTOBUF);
@@ -98,7 +98,7 @@ class OtelReceiverResourceTest {
         .contentType(PROTOBUF)
         .body(body)
         .when()
-        .post("/api/otel/v1/metrics")
+        .post("/observability/api/otel/v1/metrics")
         .then()
         .statusCode(200)
         .contentType(PROTOBUF);
@@ -123,7 +123,7 @@ class OtelReceiverResourceTest {
         .contentType(PROTOBUF)
         .body(gzipped)
         .when()
-        .post("/api/otel/v1/traces")
+        .post("/observability/api/otel/v1/traces")
         .then()
         .statusCode(200);
 
@@ -136,7 +136,7 @@ class OtelReceiverResourceTest {
         .contentType(PROTOBUF)
         .body(new byte[] {(byte) 0xff, (byte) 0xff, (byte) 0xff, 0x13})
         .when()
-        .post("/api/otel/v1/traces")
+        .post("/observability/api/otel/v1/traces")
         .then()
         .statusCode(400);
     assertTrue(store.spans(REPO, WORKSPACE).isEmpty());
@@ -148,7 +148,7 @@ class OtelReceiverResourceTest {
         .contentType(PROTOBUF)
         .body(new byte[0])
         .when()
-        .post("/api/otel/v1/traces")
+        .post("/observability/api/otel/v1/traces")
         .then()
         .statusCode(200);
   }

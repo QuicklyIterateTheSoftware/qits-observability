@@ -18,13 +18,18 @@ import jakarta.transaction.Transactional;
 import java.util.List;
 
 /**
- * The telemetry query tools of the "repository" MCP server: structured access to the spans, logs
- * and metrics that instrumented processes (services launched with the {@code otel} toggle) exported
- * into qits' in-process OTLP receiver. This beats log scraping because exceptions arrive as
- * structured span events with stack traces, correlated by trace id.
+ * The telemetry query tools of the "observability" MCP server, served at {@code
+ * /observability/mcp}: structured access to the spans, logs and metrics that instrumented processes
+ * (services launched with the {@code otel} toggle) exported into qits' in-process OTLP receiver.
+ * This beats log scraping because exceptions arrive as structured span events with stack traces,
+ * correlated by trace id.
  *
- * <p>Unlike the other repository tools these take no {@code repoId}: identity comes entirely from
- * the connection — the session's repository narrowing ({@code X-QITS-Repository}) and workspace
+ * <p>The server name is this service's own. It used to be {@code "repository"} — the same name
+ * qits-projects declares for its genuinely repository-scoped tools, which under one gateway means a
+ * client could only ever address one of the two. Nothing here is a repository tool.
+ *
+ * <p>These tools take no {@code repoId}: identity comes entirely from the connection — the
+ * session's repository narrowing ({@code X-QITS-Repository}) and workspace
  * narrowing ({@code X-QITS-Workspace} / {@code ?workspaceId=}), both stamped into the MCP URL at
  * agent launch. {@link TelemetryToolFilter} hides these tools from any session not scoped that far
  * down, and every call re-validates the scope, so an agent can only ever see its own workspace's
@@ -50,7 +55,7 @@ public class TelemetryMcpTools {
 
   @Inject TelemetryQueryService queryService;
 
-  @McpServer("repository")
+  @McpServer("observability")
   @Tool(
       description =
           "Recent errors from this workspace's telemetry, grouped by trace: error-status spans,"
@@ -66,7 +71,7 @@ public class TelemetryMcpTools {
     return queryService.errors(scope.repoId(), scope.workspaceId(), sinceMinutes);
   }
 
-  @McpServer("repository")
+  @McpServer("observability")
   @Tool(
       description =
           "Everything buffered for one trace: its spans (flat list, parent-annotated) plus the log"
@@ -78,7 +83,7 @@ public class TelemetryMcpTools {
     return queryService.trace(scope.repoId(), scope.workspaceId(), traceId);
   }
 
-  @McpServer("repository")
+  @McpServer("observability")
   @Tool(
       description =
           "Spans in this workspace's telemetry that took at least thresholdMs, slowest first.")
@@ -98,7 +103,7 @@ public class TelemetryMcpTools {
         TelemetryQueryService.SpanSort.DURATION);
   }
 
-  @McpServer("repository")
+  @McpServer("observability")
   @Tool(
       description =
           "Search this workspace's telemetry logs by case-insensitive substring over body and"
@@ -114,7 +119,7 @@ public class TelemetryMcpTools {
     return queryService.searchLogs(scope.repoId(), scope.workspaceId(), query, sinceMinutes, null);
   }
 
-  @McpServer("repository")
+  @McpServer("observability")
   @Tool(
       description =
           "Latest value per metric series from this workspace's telemetry (gauges and counters"

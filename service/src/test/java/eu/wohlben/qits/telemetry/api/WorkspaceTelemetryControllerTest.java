@@ -20,8 +20,10 @@ class WorkspaceTelemetryControllerTest {
 
   private static final String REPO = "repo-rest";
   private static final String WORKSPACE = "wt-rest";
-  private static final String BASE =
-      "/api/repositories/" + REPO + "/workspaces/" + WORKSPACE + "/telemetry";
+  private static final String BASE = "/observability/api/telemetry";
+
+  /** The scope every query carries: a filter in the query string, not a path segment. */
+  private static final String SCOPE = "repositoryId=" + REPO + "&workspaceId=" + WORKSPACE;
 
   @Inject TelemetryStore store;
 
@@ -54,7 +56,7 @@ class WorkspaceTelemetryControllerTest {
   @Test
   void errorsGroupsByTrace() {
     given()
-        .get(BASE + "/errors")
+        .get(BASE + "/errors?" + SCOPE)
         .then()
         .statusCode(200)
         .body("groups", hasSize(1))
@@ -66,7 +68,7 @@ class WorkspaceTelemetryControllerTest {
   @Test
   void traceReturnsSpansAndCorrelatedLogs() {
     given()
-        .get(BASE + "/traces/" + TelemetryFixtures.TRACE_ID_A)
+        .get(BASE + "/traces/" + TelemetryFixtures.TRACE_ID_A + "?" + SCOPE)
         .then()
         .statusCode(200)
         .body("trace.spans[0].spanId", equalTo(TelemetryFixtures.SPAN_ID_A))
@@ -77,13 +79,13 @@ class WorkspaceTelemetryControllerTest {
   void slowSpansRespectsThreshold() {
     // The fixture span lasts 250ms.
     given()
-        .get(BASE + "/slow-spans?thresholdMs=100")
+        .get(BASE + "/slow-spans?" + SCOPE + "&thresholdMs=100")
         .then()
         .statusCode(200)
         .body("spans", hasSize(1))
         .body("spans[0].durationMs", greaterThanOrEqualTo(250));
     given()
-        .get(BASE + "/slow-spans?thresholdMs=10000")
+        .get(BASE + "/slow-spans?" + SCOPE + "&thresholdMs=10000")
         .then()
         .statusCode(200)
         .body("spans", hasSize(0));
@@ -106,13 +108,13 @@ class WorkspaceTelemetryControllerTest {
                     .build()),
             System.currentTimeMillis()));
     given()
-        .get(BASE + "/slow-spans?thresholdMs=0")
+        .get(BASE + "/slow-spans?" + SCOPE + "&thresholdMs=0")
         .then()
         .statusCode(200)
         .body("spans", hasSize(2))
         .body("spans[0].spanId", equalTo(TelemetryFixtures.SPAN_ID_A));
     given()
-        .get(BASE + "/slow-spans?thresholdMs=0&sort=recent")
+        .get(BASE + "/slow-spans?" + SCOPE + "&thresholdMs=0&sort=recent")
         .then()
         .statusCode(200)
         .body("spans", hasSize(2))
@@ -122,19 +124,23 @@ class WorkspaceTelemetryControllerTest {
   @Test
   void logsFilterByQueryAndService() {
     given()
-        .get(BASE + "/logs?query=REST")
+        .get(BASE + "/logs?" + SCOPE + "&query=REST")
         .then()
         .statusCode(200)
         .body("logs", hasSize(1))
         .body("logs[0].serviceName", equalTo("svc"));
-    given().get(BASE + "/logs?service=unknown-svc").then().statusCode(200).body("logs", hasSize(0));
+    given()
+        .get(BASE + "/logs?" + SCOPE + "&service=unknown-svc")
+        .then()
+        .statusCode(200)
+        .body("logs", hasSize(0));
   }
 
   @Test
   void metricsReturnLatestPerSeriesWithNameFilter() {
-    given().get(BASE + "/metrics").then().statusCode(200).body("metrics", hasSize(2));
+    given().get(BASE + "/metrics?" + SCOPE).then().statusCode(200).body("metrics", hasSize(2));
     given()
-        .get(BASE + "/metrics?name=jvm.memory.used")
+        .get(BASE + "/metrics?" + SCOPE + "&name=jvm.memory.used")
         .then()
         .statusCode(200)
         .body("metrics", hasSize(1))
@@ -144,7 +150,7 @@ class WorkspaceTelemetryControllerTest {
   @Test
   void anotherWorkspaceSeesNothing() {
     given()
-        .get("/api/repositories/" + REPO + "/workspaces/elsewhere/telemetry/errors")
+        .get(BASE + "/errors?repositoryId=" + REPO + "&workspaceId=elsewhere")
         .then()
         .statusCode(200)
         .body("groups", hasSize(0));

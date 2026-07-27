@@ -14,20 +14,20 @@ import org.junit.jupiter.api.Test;
  * reviewable diff instead of something a caller discovers at runtime.
  *
  * <p>This is a test only because {@code @QuarkusTest} is the cheapest way to stand the application
- * up and read its own {@code /q/openapi}. It asserts nothing — the assertion is the diff.
+ * up and read its own {@code /observability/q/openapi}. It asserts nothing — the assertion is the
+ * diff.
  *
  * <p>What lands in the file is deliberately narrower than what this service serves: {@code
- * /api/otel/v1/*} and {@code /api/config.json} are {@code @Operation(hidden = true)}, the first
- * because it is an OTLP wire protocol spoken by SDKs rather than a JSON API, the second because
- * {@code @qits/angular} fetches it pre-bootstrap. Expect only the five workspace-telemetry query
- * operations.
+ * /observability/api/otel/v1/*} is {@code @Operation(hidden = true)}, because it is an OTLP wire
+ * protocol spoken by SDKs rather than a JSON API. Expect only the five telemetry query operations.
  */
 @QuarkusTest
 public class OpenApiSchemaExportTest {
 
   @Test
   public void exportOpenApiSchema() throws Exception {
-    String schema = given().when().get("/q/openapi").then().statusCode(200).extract().asString();
+    String schema =
+        given().when().get("/observability/q/openapi").then().statusCode(200).extract().asString();
 
     // The module is `service/`, so this resolves to the repo root's docs/ — matching the monorepo,
     // where the same test runs from a `service` module too.

@@ -18,7 +18,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 /**
- * Verifies the telemetry tools on the "repository" MCP server: they exist only for sessions
+ * Verifies the telemetry tools on the "observability" MCP server: they exist only for sessions
  * narrowed to repository + workspace, they answer from the session's workspace bucket only, and
  * error evidence is grouped by trace with correlated logs.
  *
@@ -82,7 +82,7 @@ public class TelemetryMcpToolsTest {
 
   private McpStreamableTestClient client(String repoId, String workspaceId) {
     return McpAssured.newStreamableClient()
-        .setMcpPath("/mcp/repository")
+        .setMcpPath("/observability/mcp")
         .setAdditionalHeaders(
             msg -> {
               io.vertx.core.MultiMap headers = io.vertx.core.MultiMap.caseInsensitiveMultiMap();

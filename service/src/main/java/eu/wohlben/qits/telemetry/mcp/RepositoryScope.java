@@ -6,10 +6,10 @@ import jakarta.inject.Inject;
 import java.util.Optional;
 
 /**
- * Resolves the repository a "repository" MCP session is narrowed to — the second scope dimension,
- * between project and workspace. Taken from the connection's HTTP request rather than from a tool
- * argument, so the model has no parameter it could point at another repository and cannot widen its
- * own scope.
+ * Resolves the repository an MCP session is narrowed to — the second scope dimension, between
+ * project and workspace. Taken from the connection's HTTP request rather than from a tool argument,
+ * so the model has no parameter it could point at another repository and cannot widen its own
+ * scope.
  *
  * <p>The extracted counterpart of the monorepo's {@code
  * eu.wohlben.qits.domain.repository.mcp.ProjectScope}, carrying its {@code X-QITS-Repository}
