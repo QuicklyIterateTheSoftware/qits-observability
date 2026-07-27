@@ -55,6 +55,19 @@ negative delta on every eviction, and a missed one leaks the global ceiling.
 Anything appended fires at most one `TelemetryChanged` per distinct scoped workspace per call. Do
 not fire per record; a 1000-span batch is one event by design.
 
+## Authentication
+
+Authentication happens at `qits-gateway`. This service resolves a principal from a trusted header
+(`X-Qits-User`, read by `telemetry/security/ForwardAuthMechanism`) and authenticates nothing.
+
+**`identity.isAnonymous()` is not a security state** — it means "no name for the audit row". A check
+of the form `if (identity.isAnonymous()) deny` would look like a security control and be worth
+nothing, because reaching this service at all already implies you are inside the trusted network.
+
+There is no auth variant to select and no authorization policy here, and roles are deliberately not
+resolved — the single role check the system has (`qits.auth.required-role`) is the gateway's. See
+`migration-auth-plan.md`.
+
 ## Tests
 
 - Register scope with `FakeRepositoryScopeGuard.allow(repoId)` and
