@@ -77,11 +77,13 @@ resolved — the single role check the system has (`qits.auth.required-role`) is
 - `TelemetryFixtures` builds real `Export*ServiceRequest` protobufs. Seed the store through the real
   `TelemetryDecoder` rather than hand-constructing `StoredSpan`s where the decoding is part of what
   you're asserting.
-- `src/test/resources/application.properties` re-provides `quarkus.rest.path=/api` and the MCP
-  root-path. Delete either and every REST test 404s / every MCP test fails to connect. These are
-  **no longer the only copy**: `src/main/resources/application.properties` now carries them for the
-  packaged process. Change one and you must change both — a suite that is green because the *test*
-  copy is right proves nothing about what ships.
+- App-level config lives in `src/main/resources/application.properties` — `quarkus.rest.path=/api`,
+  the MCP root-path, the body limit, the OpenAPI info — and **the tests inherit it**. Quarkus merges
+  main's copy into the test config rather than letting `src/test/resources/application.properties`
+  shadow it, so the suite exercises the values that actually ship. Never re-declare an app-level key
+  in test resources: the copy drifts, and the suite goes on asserting `/api/*` while the packaged
+  process serves something else. `src/test/resources/application.properties` is for values a test
+  run genuinely needs to be *different*, and today there are none.
 - `OpenApiSchemaExportTest` writes `docs/openapi.yml` as a side effect. Regenerate and commit it
   whenever the REST surface changes:
 
