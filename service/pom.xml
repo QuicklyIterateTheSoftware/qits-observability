@@ -35,6 +35,7 @@
          five extracted services, which are still library JARs for the same lapsed reason. -->
     <artifactId>qits-telemetry</artifactId>
     <name>qits-observability :: telemetry</name>
+    <packaging>quarkus</packaging>
 
     <dependencies>
         <dependency>
@@ -93,24 +94,20 @@
     <build>
         <plugins>
             <plugin>
-                <!-- This module is the DEPLOYABLE, not a library jar: `quarkus-observability` is a
+                <!-- This module is the DEPLOYABLE, not a library jar: `qits-observability` is a
                      process that receives OTLP and answers queries over what it received, and it
                      has to be runnable on its own for the gateway to have anything to route to.
-                     Augmentation is what produces target/quarkus-app/quarkus-run.jar; without this
-                     execution `mvn verify` proves the tests pass and proves nothing about whether
-                     the thing starts. Version comes from the root pom's pluginManagement. -->
+                     `<packaging>quarkus</packaging>` above is what says so: it binds generate-code,
+                     generate-code-tests and build into the lifecycle, so augmentation is not an
+                     execution someone can misplace. It was one — and a sibling repo has already had
+                     such a block silently not apply, under a `<build>` whose `<testResources>` came
+                     first, while `mvn verify` stayed green regardless (the qits-projects finding in
+                     migration-deployables-plan.md). A packaging type cannot fail that way: without
+                     this `<extensions>true</extensions>` the build stops at "Unknown packaging:
+                     quarkus". Version comes from the root pom's pluginManagement. -->
                 <groupId>${quarkus.platform.group-id}</groupId>
                 <artifactId>quarkus-maven-plugin</artifactId>
                 <extensions>true</extensions>
-                <executions>
-                    <execution>
-                        <goals>
-                            <goal>build</goal>
-                            <goal>generate-code</goal>
-                            <goal>generate-code-tests</goal>
-                        </goals>
-                    </execution>
-                </executions>
             </plugin>
             <plugin>
                 <artifactId>maven-compiler-plugin</artifactId>
@@ -131,6 +128,19 @@
                             <goal>integration-test</goal>
                             <goal>verify</goal>
                         </goals>
+                        <configuration>
+                            <systemPropertyVariables>
+                                <!-- How @QuarkusIntegrationTest finds the compiled binary in a
+                                     `-Dnative` build; without it the native run has nothing to
+                                     launch. The name is `quarkus.package.output-name` from
+                                     application.properties, NOT the maven finalName — with an
+                                     output-name set, target/${finalName}-runner does not exist, so
+                                     the two spellings have to move together or a native IT starts
+                                     nothing and passes. -->
+                                <native.image.path>${project.build.directory}/qits-observability</native.image.path>
+                                <java.util.logging.manager>org.jboss.logmanager.LogManager</java.util.logging.manager>
+                            </systemPropertyVariables>
+                        </configuration>
                     </execution>
                 </executions>
             </plugin>
@@ -140,4 +150,27 @@
             </plugin>
         </plugins>
     </build>
+
+    <profiles>
+        <!-- GraalVM native build (the same profile qits-gateway and the workspace-daemon carry):
+             `-Dnative` disables the fast-jar and enables the native image. It lives in THIS module
+             and not the root pom because only this module is an application — the root is a
+             packaging pom with nothing to native-compile. skipITs flips with it, so a `-Dnative`
+             build runs OtelReceiverIT against the binary instead of skipping past it: protobuf
+             decoding is exactly the thing that can be green on the JVM and broken in the image, and
+             an IT that never launches would hide that. -->
+        <profile>
+            <id>native</id>
+            <activation>
+                <property>
+                    <name>native</name>
+                </property>
+            </activation>
+            <properties>
+                <quarkus.package.jar.enabled>false</quarkus.package.jar.enabled>
+                <skipITs>false</skipITs>
+                <quarkus.native.enabled>true</quarkus.native.enabled>
+            </properties>
+        </profile>
+    </profiles>
 </project>

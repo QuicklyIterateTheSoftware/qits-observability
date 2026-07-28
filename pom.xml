@@ -73,6 +73,13 @@
 
         <!-- Surefire's @{argLine} has no value unless something (jacoco/quarkus) sets it. -->
         <argLine/>
+
+        <!-- Integration tests run against a PACKAGED artifact, so a plain `mvn verify` — which
+             produces the fast-jar — skips them; `service`'s `native` profile flips this to false so
+             a `-Dnative` build exercises the binary it just compiled. Same default the gateway
+             carries, and it is what keeps "mvn verify is runnable anywhere" true (AGENTS.md) now
+             that there is an IT. -->
+        <skipITs>true</skipITs>
     </properties>
 
     <dependencyManagement>

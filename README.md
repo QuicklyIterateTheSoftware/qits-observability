@@ -9,6 +9,7 @@ the segment is part of the path this process itself serves, on `qits-net` as muc
 gateway. There is no unprefixed form.
 
     mvn verify        # a clone of this repo alone builds and tests green — no monorepo, no docker
+    mvn verify -Dnative   # and compiles to a GraalVM binary, still no docker (see .sdkmanrc)
 
 Services launched inside a workspace with the `otel` toggle get `OTEL_EXPORTER_OTLP_ENDPOINT` and
 `OTEL_RESOURCE_ATTRIBUTES` pointed back at qits. Their spans, logs and metrics land here, bucketed
@@ -41,14 +42,30 @@ logic already lived entirely in the monorepo's `service` module (migration-plan.
 no `domain/telemetry` to replay. The directory is still called `service/` because the replayed git
 history is anchored to `service/src/**`.
 
-**An application, not a library jar.** `service/` is augmented by the `quarkus-maven-plugin` and
-produces `service/target/quarkus-app/quarkus-run.jar` — a process that receives OTLP on its own
-port. It was extracted as a library on the assumption that some consuming Quarkus application would
-pull it in and gain the receiver; no such application was ever written, and under the gateway
-topology none will be. A receiver that cannot be started is not a receiver.
+**An application, not a library jar.** `service/` carries `<packaging>quarkus</packaging>` and
+produces a process that receives OTLP on its own port — as a JVM fast-jar or as a native binary. It
+was extracted as a library on the assumption that some consuming Quarkus application would pull it
+in and gain the receiver; no such application was ever written, and under the gateway topology none
+will be. A receiver that cannot be started is not a receiver.
 
     ./mvnw verify
     java -jar service/target/quarkus-app/quarkus-run.jar   # :8080, ingest on /observability/api/otel/v1/*
+
+    ./mvnw package -Dnative
+    ./service/target/qits-observability                    # same routes, ~30ms to listening
+
+**Native is the shipping form.** `.sdkmanrc` names a GraalVM (`25.0.2-graalce`) so `sdk env` alone
+is enough toolchain: the build wants a `native-image` on `GRAALVM_HOME`, `JAVA_HOME` or `PATH`, and
+if it finds none it does not fail — it quietly falls back to pulling a 1.8 GB Mandrel image and
+compiling under docker. That fallback still works and is what a CI without a GraalVM gets; it is
+just not the intended path, and it is worth recognising by name when a build that normally takes
+about 80 seconds starts downloading a container image.
+
+`-Dnative` also flips `skipITs`, so the build runs `OtelReceiverIT` against the binary it just
+compiled. That is not ceremony: this service's whole ingest surface is generated protobuf, which
+native-image has to resolve ahead of time, and a mistake there is invisible to the JVM suite and
+lands as a runtime failure on the first export. The IT posts real OTLP bodies and reads them back
+out through the query surface, so a 200 on bytes that decoded to nothing cannot pass.
 
 ## What it owns, and what it deliberately does not
 

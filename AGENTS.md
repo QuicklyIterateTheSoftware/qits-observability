@@ -3,11 +3,11 @@
 Read `README.md` first: it defines the boundary (receiver vs. producers), lists the routes and the
 ports. This file is the working conventions on top of it.
 
-## The one rule that shapes everything
+## The two rules that shape everything
 
-This repo must build and test green from a **clone of itself alone** — no monorepo, no docker, no
-network, no prior `mvn install` elsewhere, no credentials. `mvn verify` is the gate. Anything that
-would break that is not a tradeoff to weigh, it is the thing this repo exists to avoid.
+**A clone of this repo alone builds and tests green** — no monorepo, no docker, no network, no prior
+`mvn install` elsewhere, no credentials. `mvn verify` is the gate. Anything that would break that is
+not a tradeoff to weigh, it is the thing this repo exists to avoid.
 
 That is why: the poms duplicate versions instead of inheriting them, the cross-context scoping
 checks are ports with fakes in `src/test` rather than a real projects/workspaces database, and
@@ -15,6 +15,25 @@ checks are ports with fakes in `src/test` rather than a real projects/workspaces
 reaching a real OTLP collector. **Never make the suite depend on a live collector, on port 4317/4318,
 or on the network.** `OtelTeeUnreachableTest` deliberately points at `http://localhost:1`, and that
 must stay a fast connect-refused, not a timeout.
+
+**`service/` compiles to a GraalVM native image**, the same rule qits-gateway and
+qits-workspace-daemon carry, and it extends the clone-alone rule rather than qualifying it:
+`.sdkmanrc` names `25.0.2-graalce`, so `sdk env` gives you a `native-image` and `./mvnw package
+-Dnative` produces `service/target/qits-observability` in about 80 seconds with no container
+involved.
+
+Two consequences worth stating before you reach for a dependency or a static field:
+
+- **A missing GraalVM does not fail the build.** Quarkus logs `Cannot find the native-image ...
+  Attempting to fall back to container build` and shells docker with a 1.8 GB Mandrel image. Green
+  either way, so the fallback is easy to be in without noticing — recognise it by the image pull.
+- **Reflection, dynamic proxies, `ServiceLoader`, resources loaded by computed name and JNI/JNA all
+  have to be registered**, and the failure lands at *runtime* in the binary while the JVM suite
+  stays green. So does live machinery in a `static final`: Quarkus initialises application classes
+  at build time, and anything holding threads or sockets then ends up in the image heap and is
+  rejected outright — which is why `OtelForwarder`'s `HttpClient` is a bean field built in
+  `@PostConstruct` rather than a class constant. If a native build needs configuration or a
+  restructure to pass, that is part of the change, not a workaround.
 
 ## Package and module conventions
 
@@ -94,8 +113,14 @@ resolved — the single role check the system has (`qits.auth.required-role`) is
   `src/test` lands in the committed document unless it is `@Operation(hidden = true)`. That is why
   `IdentityEchoResource` carries the annotation. The document should hold exactly the five
   telemetry query operations — ingest is hidden on purpose.
-- There are no integration tests and nothing here needs docker, so `mvn verify` is runnable
-  anywhere. Keep it that way.
+- `OtelReceiverIT` is the one `@QuarkusIntegrationTest`, and it runs against the *packaged* process
+  — the fast-jar or, under `-Dnative`, the binary. It exists for native-image: protobuf decoding is
+  the thing here that can be green in `OtelReceiverResourceTest` and broken in the image, and a boot
+  check would not see it because nothing loads a message class until a body arrives. So it posts
+  real OTLP bodies and reads them back through the REST query surface — a receiver that accepted the
+  bytes and decoded nothing answers 200 all day. `skipITs` defaults true in the root pom and the
+  `native` profile flips it, so a plain `mvn verify` stays as fast and as docker-free as it was;
+  nothing here needs docker on either path. Keep it that way.
 - **A `Failed to start quarkus` / `Port already bound: 8081` failure is the known flake**
   (`migration-plan.md` §9 item 14), not your change: `@QuarkusTest` restarts race for the test port.
   Re-run before investigating.

@@ -1,5 +1,6 @@
 package eu.wohlben.qits.telemetry.api;
 
+import jakarta.annotation.PostConstruct;
 import jakarta.enterprise.context.ApplicationScoped;
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -27,11 +28,26 @@ import org.jboss.logging.Logger;
 public class OtelForwarder {
 
   private static final Logger LOG = Logger.getLogger(OtelForwarder.class);
-  private static final HttpClient CLIENT =
-      HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(2)).build();
 
   @ConfigProperty(name = "otel.exporter.otlp.endpoint")
   Optional<String> endpoint;
+
+  /**
+   * A bean field built in {@link #openClient()}, not a {@code static final} one. An {@link
+   * HttpClient} is live machinery — a selector thread and a connection pool — and Quarkus
+   * initializes application classes at <em>build</em> time for the native image, so a static
+   * initializer here put a running client into the image heap and native-image refused it outright:
+   * "An object of type 'jdk.internal.net.http.HttpClientFacade' was found in the image heap". The
+   * alternatives were to force the class to run-time initialization, or to build-time-initialize the
+   * JDK's HTTP internals and ship a client that was constructed on the build machine; neither is
+   * worth it for state that is per-application anyway, which is exactly what a bean field is.
+   */
+  private HttpClient client;
+
+  @PostConstruct
+  void openClient() {
+    client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(2)).build();
+  }
 
   public void forward(String signal, String contentType, String contentEncoding, byte[] body) {
     if (endpoint.isEmpty()) {
@@ -48,7 +64,7 @@ public class OtelForwarder {
       if (contentEncoding != null) {
         request.header("Content-Encoding", contentEncoding);
       }
-      CLIENT
+      client
           .sendAsync(request.build(), HttpResponse.BodyHandlers.discarding())
           .whenComplete(
               (response, failure) -> {
