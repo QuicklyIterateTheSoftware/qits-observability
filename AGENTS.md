@@ -84,8 +84,23 @@ of the form `if (identity.isAnonymous()) deny` would look like a security contro
 nothing, because reaching this service at all already implies you are inside the trusted network.
 
 There is no auth variant to select and no authorization policy here, and roles are deliberately not
-resolved — the single role check the system has (`qits.auth.required-role`) is the gateway's. See
-`migration-auth-plan.md`.
+resolved — the single role check the system has (`qits.auth.required-role`) is the gateway's, and so
+is the choice of scheme: the gateway authenticates with OIDC, fixed at *its* build time
+(`-Dqits.variant`), which is what makes the variant question single-instance instead of one per
+service.
+
+**`X-Qits-*` is the gateway's reserved namespace, stripped from every inbound request
+unconditionally**, so a client cannot forge one. That strip rule is the entire reason the header can
+be trusted here — and it is why `ForwardAuthTest` sets the real header rather than reaching for
+`@TestSecurity`. The header *is* the contract under test; a test that mocked the identity instead
+would pass just as happily against a mechanism that never reads it.
+
+None of this reaches ingest. `/observability/api/otel/v1/*` is allow-listed unauthenticated because
+its callers are exporter SDKs inside workspace containers, not sessions — they carry no identity and
+never traverse the front door at all, since every service sits unpublished on `qits-net` alongside
+those containers (`migration-plan.md` §9 item 21). The gateway is a perimeter against the internet,
+not a boundary on `qits-net`; do not write anything here as if it were. The scoping guards, not the
+identity, are what keep one project's telemetry out of another's.
 
 ## Tests
 
