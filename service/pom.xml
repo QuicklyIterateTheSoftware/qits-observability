@@ -43,6 +43,12 @@
             <artifactId>quarkus-arc</artifactId>
         </dependency>
         <dependency>
+            <!-- OTLP export — this service is both receiver and sender, see the telemetry section
+                 of application.properties for why that is not circular. -->
+            <groupId>io.quarkus</groupId>
+            <artifactId>quarkus-opentelemetry</artifactId>
+        </dependency>
+        <dependency>
             <!-- SecurityIdentity + the HttpAuthenticationMechanism SPI, for the single thing this
                  service does about auth: read qits-gateway's X-Qits-User header into an identity
                  (see security/ForwardAuthMechanism). NOT an auth variant and NOT an authorization
