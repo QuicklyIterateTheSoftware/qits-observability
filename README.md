@@ -131,13 +131,22 @@ What is still the deployment's to provide:
 - allow-list `/observability/api/otel/v1/*` for unauthenticated access. That is the ingest surface,
   and the exporters hitting it are SDKs inside workspace containers, not sessions. In the monorepo
   this lives in `auth/core`'s `PublicPaths`; under the gateway it is `PublicPaths` there.
-- **point something at it.** Nothing does today. The overlay that set `OTEL_EXPORTER_OTLP_ENDPOINT`
-  on launched services (`OtelEnvironment` in the monorepo) was dropped during the daemon extraction
-  as dead code, and the live launch path — the daemon's `ServiceSupervisor` — never had it. The
-  `otel:` toggle that used to be parsed and round-tripped without ever being acted on has since been
-  removed too, so there is no half-wired remnant to mistake for a sender: rebuilding this means
-  building the overlay beside `ServiceSupervisor`, aiming it at this service's address on
-  `qits-net`, and reintroducing whatever declares it. Until then this receiver has no senders. See
+- nothing, for the qits services themselves — **they now export here on their own.** Each of the
+  seven carries `quarkus-opentelemetry` and points at one key, `qits.observability.url`, defaulting
+  to `http://qits-observability:8080` on `qits-net`. This service is among them: it exports to
+  itself, with its three ingest uris suppressed so the export of a span cannot produce another one.
+  A deployment that moves this receiver sets that one key per service; a deployment that wants a
+  service silent sets `quarkus.otel.sdk.disabled=true` there.
+
+The sender that is still missing, and it is the workspace half:
+
+- **a workspace's dev servers still send nothing.** The overlay that set
+  `OTEL_EXPORTER_OTLP_ENDPOINT` on launched services (`OtelEnvironment` in the monorepo) was dropped
+  during the daemon extraction as dead code, and the live launch path — the daemon's
+  `ServiceSupervisor` — never had it. The `otel:` toggle that used to be parsed and round-tripped
+  without ever being acted on has since been removed too, so there is no half-wired remnant to
+  mistake for a sender: rebuilding this means building the overlay beside `ServiceSupervisor`,
+  aiming it at this service's address, and reintroducing whatever declares it. See
   `migration-deployables-plan.md` §6 in the superproject, which records the deferral.
 
 Routes: `POST /observability/api/otel/v1/{traces,logs,metrics}` (ingest), `GET
