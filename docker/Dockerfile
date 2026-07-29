@@ -35,9 +35,13 @@ RUN ./mvnw --version
 # stage compiles.
 COPY . .
 
-# The whole reactor, not `-pl service`: the point of `COPY . .` is that adding a module costs nothing
-# here, and a `-pl` list would put the module names straight back into this file. There is one module
-# today, so it is also the same work.
+# `-pl service -am` builds the app and its dependency closure, not the whole reactor. That is not a
+# module list — it names the one module this image ships, which the COPY below already names anyway,
+# so leaving it out gains nothing. What it buys: this repo will publish libraries as well as an
+# image, and a reactor then holds modules that exist for consumers rather than for the binary. On a
+# whole-reactor build a compile error in one of those would block deploying this service, and build
+# time would grow with the published surface instead of with the app. The image build should depend
+# on exactly what the image contains.
 #
 # -Dnative flips quarkus.native.enabled (this project carries its own `native` profile). Cap
 # native-image RAM so the build is deterministic on small machines.
@@ -47,7 +51,7 @@ COPY . .
 # profile also flips skipITs to false, but `package` stops short of the integration-test phase, so
 # OtelReceiverIT does not run here either; `./mvnw verify -Dnative` is what exercises the binary
 # against real OTLP bodies.
-RUN ./mvnw -B -ntp package -Dnative -DskipTests \
+RUN ./mvnw -B -ntp -pl service -am package -Dnative -DskipTests \
       -Dquarkus.native.native-image-xmx=4g
 
 # --- runtime --------------------------------------------------------------------------------------
