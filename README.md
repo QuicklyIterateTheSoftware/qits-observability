@@ -133,10 +133,12 @@ What is still the deployment's to provide:
   this lives in `auth/core`'s `PublicPaths`; under the gateway it is `PublicPaths` there.
 - **point something at it.** Nothing does today. The overlay that set `OTEL_EXPORTER_OTLP_ENDPOINT`
   on launched services (`OtelEnvironment` in the monorepo) was dropped during the daemon extraction
-  as dead code, and the live launch path — the daemon's `ServiceSupervisor` — never had it: the
-  `otel:` toggle is parsed, round-tripped through `ConfigJson`, and never acted on. Until that is
-  rebuilt beside `ServiceSupervisor` and aimed at this service's address on `qits-net`, this
-  receiver has no senders. See `migration-deployables-plan.md` §4a in the superproject.
+  as dead code, and the live launch path — the daemon's `ServiceSupervisor` — never had it. The
+  `otel:` toggle that used to be parsed and round-tripped without ever being acted on has since been
+  removed too, so there is no half-wired remnant to mistake for a sender: rebuilding this means
+  building the overlay beside `ServiceSupervisor`, aiming it at this service's address on
+  `qits-net`, and reintroducing whatever declares it. Until then this receiver has no senders. See
+  `migration-deployables-plan.md` §6 in the superproject, which records the deferral.
 
 Routes: `POST /observability/api/otel/v1/{traces,logs,metrics}` (ingest), `GET
 /observability/api/telemetry/{errors,slow-spans,logs,metrics}?repositoryId=&workspaceId=` and `GET
