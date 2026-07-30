@@ -51,8 +51,22 @@ COPY . .
 # profile also flips skipITs to false, but `package` stops short of the integration-test phase, so
 # OtelReceiverIT does not run here either; `./mvnw verify -Dnative` is what exercises the binary
 # against real OTLP bodies.
+#
+# The two `package-manager-install` flags are how the Angular client gets built HERE. Quinoa shells
+# out to npm, and a Mandrel builder image has no node — so without them this stage fails the moment
+# the webui submodule is present, and the flags are on the command line rather than in
+# application.properties precisely because a developer machine already has node and should keep using
+# its own. The version is pinned so the image build is reproducible, not "whatever nodejs.org calls
+# current".
+#
+# A build context whose webui submodule is NOT initialised fails this stage with `No package.json
+# found in Web UI directory: 'src/main/webui'` — git leaves the gitlink as an empty directory, and an
+# empty directory is the one case Quinoa treats as a misconfiguration rather than as "no client".
+# The repo's own CI initialises it in .config/qits/ci-post-receive.yml before `docker build`.
 RUN ./mvnw -B -ntp -pl service -am package -Dnative -DskipTests \
-      -Dquarkus.native.native-image-xmx=4g
+      -Dquarkus.native.native-image-xmx=4g \
+      -Dquarkus.quinoa.package-manager-install=true \
+      -Dquarkus.quinoa.package-manager-install.node-version=22.22.0
 
 # --- runtime --------------------------------------------------------------------------------------
 FROM registry.access.redhat.com/ubi9/ubi-minimal:9.6
