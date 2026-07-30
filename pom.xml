@@ -66,6 +66,15 @@
         <mcp-server.version>1.13.0</mcp-server.version>
         <opentelemetry-proto.version>1.7.0-alpha</opentelemetry-proto.version>
 
+        <!-- Also outside the platform BOM, and pinned for the same reason. 2.8.2 rather than the
+             newer 2.8.3: quinoa's parent pom names the Quarkus it is built and tested against, and
+             2.8.3 moved that to 3.36.2 — ahead of our 3.34.6. An extension built against a LATER
+             core may reach for deployment APIs this platform does not have, and the failure lands
+             at augmentation, not at resolution. 2.8.2 is built against 3.27.3, comfortably below
+             us, which is the direction Quarkus keeps compatible. Re-check this pom's baseline
+             before bumping, not just the version number. -->
+        <quinoa.version>2.8.2</quinoa.version>
+
         <compiler-plugin.version>3.15.0</compiler-plugin.version>
         <surefire-plugin.version>3.5.4</surefire-plugin.version>
         <failsafe-plugin.version>3.5.4</failsafe-plugin.version>
@@ -105,6 +114,11 @@
                 <groupId>io.opentelemetry.proto</groupId>
                 <artifactId>opentelemetry-proto</artifactId>
                 <version>${opentelemetry-proto.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.quarkiverse.quinoa</groupId>
+                <artifactId>quarkus-quinoa</artifactId>
+                <version>${quinoa.version}</version>
             </dependency>
         </dependencies>
     </dependencyManagement>

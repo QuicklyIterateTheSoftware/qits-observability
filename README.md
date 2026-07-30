@@ -31,6 +31,7 @@ gateway constant belongs to the gateway.
 | Path | What |
 |---|---|
 | `service/` | The whole context, artifactId `qits-telemetry`. |
+| `service/src/main/webui/` | The SPA, as the `qits-spa-observability` submodule. Built and served by Quinoa. |
 | `…/api/` | `OtelReceiverResource` (OTLP ingest), `OtelForwarder` (the upstream tee), `WorkspaceTelemetryController` (the UI's JSON), `TelemetryExceptionMapper`. |
 | `…/control/` | `TelemetryDecoder` (protobuf → records), `TelemetryStore` (the buffer), `TelemetryQueryService` (every query both surfaces answer from), `TelemetrySizeEstimator`, `TelemetryChangePublisher`. |
 | `…/dto/` | The stored records and the wire DTOs. |
@@ -66,6 +67,28 @@ compiled. That is not ceremony: this service's whole ingest surface is generated
 native-image has to resolve ahead of time, and a mistake there is invisible to the JVM suite and
 lands as a runtime failure on the first export. The IT posts real OTLP bodies and reads them back
 out through the query surface, so a 200 on bytes that decoded to nothing cannot pass.
+
+## The SPA
+
+The UI is this context's own, and ships inside the same process: `service/src/main/webui` is the
+`qits-spa-observability` submodule (an Angular app), and `quarkus-quinoa` builds it during
+augmentation and serves the bundle as static resources. One deployable, one origin — the page and
+the API it calls differ only by path, so there is no CORS to configure and the gateway still routes
+a single prefix.
+
+    git submodule update --init            # the webui is a submodule; a bare clone has an empty dir
+    ./mvnw -pl service package -am         # quinoa runs `npm install` + `npm run build` inside it
+
+Served at **`/observability`**, beside its own API rather than above it. Both halves have to agree
+on that segment: the submodule's `angular.json` sets `baseHref` to `/observability/`, and a
+disagreement shows up as a blank page whose bundle 404s, with nothing logged server-side. SPA
+routing is on, so deep links fall back to `index.html`; `/observability/{api,q,mcp}` are excluded
+from that fallback and still answer for themselves.
+
+**This makes node/npm a build prerequisite, and only a build one.** Quinoa is disabled in test mode
+by default, so `mvn verify`'s suite is as offline and as fast as it was — the clone-alone rule holds
+where it is checked. `mvn package` now reaches the npm registry, which is the price of serving the
+UI from here rather than from a second container.
 
 ## What it owns, and what it deliberately does not
 
@@ -170,8 +193,6 @@ is invisible to the local ingest.
 
 ## What is deliberately *not* here
 
-- The **frontend**. The workspace telemetry tab is part of the monorepo's webui, out of scope for
-  the whole migration until it becomes per-service Lit components.
 - The **`otel` launch toggle** and the env-var injection that points exporters at this receiver:
   that is the service-supervision half, and lives with workspaces / the workspace-daemon.
 - **Anything that authenticates.** `PublicPaths` and the auth variants are an open question

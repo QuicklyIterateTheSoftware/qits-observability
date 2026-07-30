@@ -27,9 +27,10 @@
          application pulls it in and gets the OTLP receiver, the REST routes and the MCP tools" —
          on the reasoning that packaging it would need an auth variant, a webui and a main class.
          Each of those has since stopped being true: authentication terminates at qits-gateway and
-         this module reads a header (see security/), the webui stays in the monorepo and is not this
-         context's concern, and Quarkus supplies the main class. What remained was a receiver that
-         no process could start and the gateway had nothing to route to.
+         this module reads a header (see security/), the webui is now this context's own — the
+         qits-spa-observability submodule at src/main/webui, built into the artifact by Quinoa — and
+         Quarkus supplies the main class. What remained was a receiver that no process could start
+         and the gateway had nothing to route to.
 
          See migration-deployables-plan.md in the superproject; the same change is owed to the other
          five extracted services, which are still library JARs for the same lapsed reason. -->
@@ -85,6 +86,17 @@
                  "repository" server. Version pinned in the parent. -->
             <groupId>io.quarkiverse.mcp</groupId>
             <artifactId>quarkus-mcp-server-http</artifactId>
+        </dependency>
+        <dependency>
+            <!-- Builds the Angular SPA in src/main/webui (the qits-spa-observability submodule)
+                 during augmentation and serves the bundle as static resources from this process,
+                 so /observability is one deployable rather than a service plus a web server.
+                 Version pinned in the parent.
+
+                 NOTE this makes node/npm a BUILD prerequisite of `mvn package` — see the Quinoa
+                 block in application.properties for what that does and does not cost the suite. -->
+            <groupId>io.quarkiverse.quinoa</groupId>
+            <artifactId>quarkus-quinoa</artifactId>
         </dependency>
         <dependency>
             <groupId>io.quarkus</groupId>
