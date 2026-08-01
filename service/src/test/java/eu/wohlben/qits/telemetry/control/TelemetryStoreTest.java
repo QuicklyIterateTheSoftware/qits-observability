@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import eu.wohlben.qits.telemetry.dto.MetricPoint;
 import eu.wohlben.qits.telemetry.dto.SpanEvent;
 import eu.wohlben.qits.telemetry.dto.StoredLog;
+import eu.wohlben.qits.telemetry.dto.StoredSource;
 import eu.wohlben.qits.telemetry.dto.StoredSpan;
 import java.util.List;
 import java.util.Map;
@@ -46,6 +47,32 @@ class TelemetryStoreTest {
         List.of(),
         resourceAttributes,
         receivedAt);
+  }
+
+  /**
+   * A span whose {@code serviceName} agrees with its {@code service.name} resource attribute, the
+   * way {@link TelemetryDecoder} produces one. {@link #span} hardcodes "svc" instead, which is
+   * fine where the service is irrelevant and wrong where the bucketing keys on it.
+   */
+  private static StoredSpan serviceSpan(String traceId, String name, String service, long at) {
+    Map<String, String> resource = Map.of("service.name", service);
+    StoredSpan template = span(traceId, name, resource, at);
+    return new StoredSpan(
+        template.traceId(),
+        template.spanId(),
+        template.parentSpanId(),
+        service,
+        template.scopeName(),
+        template.name(),
+        template.kind(),
+        template.startEpochNanos(),
+        template.endEpochNanos(),
+        template.status(),
+        template.statusMessage(),
+        template.attributes(),
+        template.events(),
+        resource,
+        template.receivedAtMillis());
   }
 
   private static StoredLog log(
@@ -221,6 +248,181 @@ class TelemetryStoreTest {
 
     assertTrue(store.spans("repo", "wt").isEmpty());
     assertTrue(store.totalBytes() > 0, "unscoped telemetry must still be retained (and bounded)");
+  }
+
+  @Test
+  void telemetryWithoutTheQitsPairIsBucketedByServiceName() {
+    store.addSpans(List.of(serviceSpan("t1", "from-ci", "qits-ci", 1)));
+    store.addSpans(List.of(serviceSpan("t2", "from-cd", "qits-cd", 2)));
+
+    assertEquals(1, store.spansIn("_service/qits-ci").size());
+    assertEquals("from-ci", store.spansIn("_service/qits-ci").getFirst().name());
+    assertEquals(1, store.spansIn("_service/qits-cd").size());
+    assertTrue(store.spansIn(TelemetryStore.UNSCOPED_KEY).isEmpty(), "service.name was present");
+  }
+
+  @Test
+  void telemetryWithNeitherPairNorServiceNameStillLandsInTheUnscopedBucket() {
+    store.addSpans(List.of(span("t", "nameless", Map.of(), 1)));
+    store.addLogs(List.of(log("nameless", Map.of("service.name", " "), 2)));
+
+    assertEquals(1, store.spansIn(TelemetryStore.UNSCOPED_KEY).size());
+    assertEquals(1, store.logsIn(TelemetryStore.UNSCOPED_KEY).size());
+  }
+
+  @Test
+  void theQitsPairStillWinsOverServiceName() {
+    store.addSpans(List.of(span("t", "scoped", qitsAttributes("repo", "wt"), 1)));
+
+    assertEquals(1, store.spans("repo", "wt").size());
+    assertTrue(store.spansIn("_service/svc").isEmpty(), "the pair must take precedence");
+  }
+
+  @Test
+  void oneServiceCannotEvictAnotherNowThatEachHasItsOwnBucket() {
+    store.maxSpansPerWorkspace = 3;
+    Map<String, String> chatty = Map.of("service.name", "qits-gateway");
+    Map<String, String> quiet = Map.of("service.name", "qits-cd");
+    store.addSpans(List.of(span("t-quiet", "quiet", quiet, 1)));
+    for (int i = 0; i < 20; i++) {
+      store.addSpans(List.of(span("t-chatty-" + i, "chatty-" + i, chatty, 10 + i)));
+    }
+
+    // The cap is per source, so the chatty one pays its own bill and the quiet one keeps its span.
+    assertEquals(3, store.spansIn("_service/qits-gateway").size());
+    assertEquals(1, store.spansIn("_service/qits-cd").size());
+    assertEquals(17, store.evictedSpans());
+  }
+
+  @Test
+  void evictionCountersCountWhatWasDropped() {
+    store.maxSpansPerWorkspace = 1;
+    store.maxLogsPerWorkspace = 1;
+    store.maxMetricSeriesPerWorkspace = 1;
+    Map<String, String> attrs = qitsAttributes("repo", "wt");
+    for (int i = 0; i < 4; i++) {
+      store.addSpans(List.of(span("t" + i, "s" + i, attrs, i)));
+      store.addLogs(List.of(log("l" + i, attrs, i)));
+      store.addMetrics(List.of(metric("m" + i, i, Map.of(), attrs)));
+    }
+
+    assertEquals(3, store.evictedSpans());
+    assertEquals(3, store.evictedLogs());
+    assertEquals(3, store.droppedMetricSeries(), "new series over the cap are dropped, not evicted");
+
+    store.clear();
+    assertEquals(0, store.evictedSpans());
+    assertEquals(0, store.evictedLogs());
+    assertEquals(0, store.droppedMetricSeries());
+  }
+
+  @Test
+  void sourcesReportEveryBucketWithItsCountsAndAgeSpan() {
+    store.addSpans(List.of(serviceSpan("t1", "a", "qits-ci", 100)));
+    store.addSpans(List.of(serviceSpan("t2", "b", "qits-ci", 300)));
+    store.addLogs(List.of(log("hello", Map.of("service.name", "qits-ci"), 200)));
+    store.addSpans(List.of(span("t3", "c", qitsAttributes("repo", "wt"), 50)));
+    store.addSpans(List.of(span("t4", "d", Map.of(), 400)));
+
+    List<StoredSource> sources = store.sources();
+    assertEquals(3, sources.size());
+    assertEquals(
+        List.of("_service/qits-ci", "_unscoped", "repo/wt"),
+        sources.stream().map(StoredSource::key).toList(),
+        "sources are listed in key order");
+
+    StoredSource ci = sources.getFirst();
+    assertEquals(2, ci.spans());
+    assertEquals(1, ci.logs());
+    assertEquals(100L, ci.oldestReceivedAtMillis(), "the oldest record in the bucket");
+    assertEquals(300L, ci.newestReceivedAtMillis(), "the newest record in the bucket");
+    assertTrue(ci.bytes() > 0);
+
+    // The breakdown splits by the record's own service name, per signal — the log helper reports
+    // "svc", so this bucket honestly holds two.
+    assertEquals(List.of("qits-ci", "svc"), ci.services().stream().map(s -> s.name()).toList());
+    assertEquals(2, ci.services().getFirst().spans());
+    assertEquals(0, ci.services().getFirst().logs());
+    assertEquals(1, ci.services().getLast().logs());
+  }
+
+  @Test
+  void anEmptiedBucketIsStillListedSoItsSilenceIsDistinguishable() {
+    store.maxSpansPerWorkspace = 1;
+    store.addSpans(List.of(span("t1", "a", Map.of("service.name", "qits-ci"), 1)));
+    store.maxSpansPerWorkspace = 0;
+    store.addSpans(List.of(span("t2", "b", Map.of("service.name", "qits-ci"), 2)));
+
+    List<StoredSource> sources = store.sources();
+    assertEquals(1, sources.size());
+    assertEquals(0, sources.getFirst().spans());
+    assertEquals(null, sources.getFirst().oldestReceivedAtMillis(), "nothing left to be old");
+    assertTrue(store.evictedSpans() > 0, "the counter is what says the silence is eviction");
+  }
+
+  /**
+   * §1.4 of the observability-UI plan argued from arithmetic that the count caps bind before the
+   * byte ceiling, and the span cap was lowered to 2,000 on that basis. This turns the argument into
+   * an assertion against the real estimator: if a future change makes spans fatter, or the caps
+   * rise, the ceiling stops being unreachable and the "report counts, not bytes" advice in the DTO
+   * javadoc — and the UI built on it — goes wrong quietly.
+   */
+  @Test
+  void theCountCapsBindBeforeTheGlobalByteCeiling() {
+    // A Quarkus server span as the platform actually exports one: ~10 span attributes on top of
+    // ~8 resource attributes, http-route-shaped names.
+    Map<String, String> resource =
+        Map.of(
+            "service.name", "qits-observability",
+            "service.version", "1.0.0-SNAPSHOT",
+            "telemetry.sdk.name", "opentelemetry",
+            "telemetry.sdk.language", "java",
+            "telemetry.sdk.version", "1.54.0",
+            "host.name", "qits-cd-qits-qits-observability-bdc0983f",
+            "os.type", "linux",
+            "process.runtime.name", "GraalVM Native Image");
+    Map<String, String> attributes =
+        Map.of(
+            "http.request.method", "POST",
+            "url.path", "/observability/api/otel/v1/traces",
+            "url.scheme", "http",
+            "http.response.status_code", "200",
+            "http.route", "/observability/api/otel/v1/traces",
+            "server.address", "qits-observability",
+            "server.port", "8080",
+            "network.protocol.version", "1.1",
+            "user_agent.original", "OTel-OTLP-Exporter-Java/1.54.0",
+            "client.address", "172.18.0.5");
+    StoredSpan realistic =
+        new StoredSpan(
+            "0af7651916cd43dd8448eb211c80319c",
+            "b7ad6b7169203331",
+            "c8ad6b7169203332",
+            "qits-observability",
+            "io.quarkus.opentelemetry",
+            "POST /observability/api/otel/v1/traces",
+            "SERVER",
+            1_000_000_000L,
+            1_250_000_000L,
+            "UNSET",
+            "",
+            attributes,
+            List.of(),
+            resource,
+            1L);
+
+    int spanBytes = TelemetrySizeEstimator.bytesOf(realistic);
+    // Ten platform processes, each its own bucket since the service.name re-bucketing.
+    long worstCase = 10L * store.maxSpansPerWorkspace * spanBytes;
+
+    assertEquals(2000, store.maxSpansPerWorkspace, "the plan's cap");
+    assertTrue(
+        worstCase < store.maxTotalBytes,
+        "ten full span buckets estimate at "
+            + worstCase
+            + " bytes, which must stay under the "
+            + store.maxTotalBytes
+            + "-byte ceiling — otherwise the ceiling binds first and the cap needs revisiting");
   }
 
   @Test

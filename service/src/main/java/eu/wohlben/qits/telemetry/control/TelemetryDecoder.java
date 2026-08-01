@@ -39,7 +39,8 @@ import java.util.stream.Collectors;
 @ApplicationScoped
 public class TelemetryDecoder {
 
-  private static final String SERVICE_NAME_ATTRIBUTE = "service.name";
+  /** The OTel resource attribute the store's per-service bucketing keys on, too. */
+  static final String SERVICE_NAME_ATTRIBUTE = "service.name";
   private static final HexFormat HEX = HexFormat.of();
 
   /** Decodes a trace export; {@code receivedAtMillis} is the server-clock ingest stamp. */
