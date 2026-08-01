@@ -69,10 +69,25 @@ ingest and are not foreign keys.
 `TelemetryStore`'s lock order is always `evictionLock → bucket monitor`, and appenders never take
 `evictionLock` while holding a bucket monitor. Keep it that way; the two bounding tiers can
 otherwise deadlock. Every mutation path must also stay byte-accounted — `account()` is called with a
-negative delta on every eviction, and a missed one leaks the global ceiling.
+negative delta on every eviction, and a missed one leaks the global ceiling. Eviction is likewise
+counted: `evictOldestSpan` / `evictOldestLog` are the only places records leave, so route new
+eviction paths through them rather than calling `removeFirst()` and leaving the counter behind.
 
 Anything appended fires at most one `TelemetryChanged` per distinct scoped workspace per call. Do
-not fire per record; a 1000-span batch is one event by design.
+not fire per record; a 1000-span batch is one event by design. Do not wire a stream to it either —
+it is silent for everything that is not workspace-scoped, which today is all of it, and the reason
+is written in its javadoc.
+
+**Bucket keys are opaque, and that is load-bearing.** `keyFor()` picks the workspace pair, then
+`service.name`, then `_unscoped`; the REST surface hands the key out through `…/telemetry/sources`
+and takes it back as `?source=`. No caller constructs one, so the tiers can change without a wire
+change. The MCP tools keep the pair-shaped vocabulary (`spans(repoId, workspaceId)` and friends),
+which delegate to the `…In(sourceKey)` twins — an agent's scope is a workspace and it must never
+learn a key that reaches past one.
+
+Nothing here may need CDI: `TelemetryStoreTest` news the store up directly and stays plain JUnit.
+That is why the eviction counters are `AtomicLong` fields and not metrics, and why `startedAt` is a
+plain field that a `StartupEvent` observer merely re-stamps.
 
 ## Authentication
 
@@ -126,8 +141,12 @@ identity, are what keep one project's telemetry out of another's.
 
   It runs as a `@QuarkusTest`, so **the test classpath is indexed too**: any `@Path` resource under
   `src/test` lands in the committed document unless it is `@Operation(hidden = true)`. That is why
-  `IdentityEchoResource` carries the annotation. The document should hold exactly the five
+  `IdentityEchoResource` carries the annotation. The document should hold exactly the eight
   telemetry query operations — ingest is hidden on purpose.
+
+  Response records nested in the controller generate as `Response`, `Response1`, `Response2`… and a
+  generated client inherits those names, so each carries `@Schema(name = …)`. Give any new one a
+  name too; the alternative is a renumbering that silently reshuffles every existing schema.
 - `OtelReceiverIT` is the one `@QuarkusIntegrationTest`, and it runs against the *packaged* process
   — the fast-jar or, under `-Dnative`, the binary. It exists for native-image: protobuf decoding is
   the thing here that can be green in `OtelReceiverResourceTest` and broken in the image, and a boot

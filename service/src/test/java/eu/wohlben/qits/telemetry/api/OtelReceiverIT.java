@@ -2,8 +2,10 @@ package eu.wohlben.qits.telemetry.api;
 
 import static io.restassured.RestAssured.given;
 import static org.hamcrest.Matchers.equalTo;
+import static org.hamcrest.Matchers.greaterThan;
 import static org.hamcrest.Matchers.hasItem;
 import static org.hamcrest.Matchers.hasSize;
+import static org.hamcrest.Matchers.notNullValue;
 
 import eu.wohlben.qits.telemetry.TelemetryFixtures;
 import io.opentelemetry.proto.logs.v1.SeverityNumber;
@@ -162,6 +164,74 @@ class OtelReceiverIT {
         .then()
         .statusCode(200)
         .body("trace.spans[0].spanId", equalTo(TelemetryFixtures.SPAN_ID_B));
+  }
+
+  /**
+   * The path every process on this platform actually takes: an export carrying a {@code
+   * service.name} and no qits attributes at all. It has to land in a bucket the sources listing
+   * names and {@code ?source=} can reach — before this existed such an export was accepted, stored
+   * and then unreachable by any combination of query parameters.
+   *
+   * <p>This is also where the new read surface meets the image. {@code sources} and {@code store}
+   * serialise records the older endpoints never returned — an enum, an {@code Instant}, a nested
+   * caps object — and reflective serialisation is exactly the class of thing that is green on the
+   * JVM and empty in the binary.
+   */
+  @Test
+  void anUnscopedExportIsBucketedByServiceAndReadableThroughSource() {
+    String service = "it-unbucketed-service";
+    String source = "_service/" + service;
+    String traceId = "9cf7651916cd43dd8448eb211c80319e";
+    String spanId = "d9ad6b7169203339";
+
+    given()
+        .contentType(PROTOBUF)
+        .body(
+            TelemetryFixtures.errorTraceRequest(service, null, null, traceId, spanId).toByteArray())
+        .when()
+        .post(INGEST + "/traces")
+        .then()
+        .statusCode(200);
+
+    given()
+        .get(QUERY + "/sources")
+        .then()
+        .statusCode(200)
+        .body("sources.find { it.key == '" + source + "' }.kind", equalTo("SERVICE"))
+        .body("sources.find { it.key == '" + source + "' }.label", equalTo(service))
+        .body("sources.find { it.key == '" + source + "' }.spans", equalTo(1))
+        .body("sources.find { it.key == '" + source + "' }.services[0].name", equalTo(service))
+        .body("sources.find { it.key == '" + source + "' }.oldestReceivedAt", notNullValue());
+
+    given()
+        .get(QUERY + "/store")
+        .then()
+        .statusCode(200)
+        .body("startedAt", notNullValue())
+        .body("caps.spansPerSource", equalTo(2000))
+        .body("maxTotalBytes", equalTo(67108864))
+        .body("sourceCount", greaterThan(0));
+
+    given()
+        .get(QUERY + "/traces?source=" + source)
+        .then()
+        .statusCode(200)
+        .body("traces.find { it.traceId == '" + traceId + "' }.rootName", equalTo("GET /boom"))
+        .body("traces.find { it.traceId == '" + traceId + "' }.rootService", equalTo(service))
+        .body("traces.find { it.traceId == '" + traceId + "' }.errorSpanCount", equalTo(1))
+        .body("traces.find { it.traceId == '" + traceId + "' }.hasException", equalTo(true))
+        .body("traces.find { it.traceId == '" + traceId + "' }.rootMissing", equalTo(false));
+
+    given()
+        .get(QUERY + "/traces/" + traceId + "?source=" + source)
+        .then()
+        .statusCode(200)
+        .body("trace.spans[0].spanId", equalTo(spanId))
+        .body(
+            "trace.spans[0].events[0].attributes.'exception.type'",
+            equalTo("java.lang.IllegalStateException"));
+
+    given().get(QUERY + "/logs?source=" + source + "&limit=0").then().statusCode(400);
   }
 
   @Test

@@ -4,39 +4,78 @@
 openapi: 3.1.0
 components:
   schemas:
-    Response:
+    GetTelemetryTraceResponse:
       type: object
       properties:
         trace:
           $ref: "#/components/schemas/TelemetryTraceDto"
-    Response1:
+    Instant:
+      type: string
+      format: date-time
+      examples:
+      - 2022-03-10T16:15:50Z
+    ListSlowSpansResponse:
       type: object
       properties:
         spans:
           type: array
           items:
             $ref: "#/components/schemas/TelemetrySpanDto"
-    Response2:
-      type: object
-      properties:
-        metrics:
-          type: array
-          items:
-            $ref: "#/components/schemas/TelemetryMetricDto"
-    Response3:
-      type: object
-      properties:
-        logs:
-          type: array
-          items:
-            $ref: "#/components/schemas/TelemetryLogDto"
-    Response4:
+        total:
+          type: integer
+          format: int32
+        truncated:
+          type: boolean
+    ListTelemetryErrorsResponse:
       type: object
       properties:
         groups:
           type: array
           items:
             $ref: "#/components/schemas/TelemetryErrorGroupDto"
+        total:
+          type: integer
+          format: int32
+        truncated:
+          type: boolean
+    ListTelemetryMetricsResponse:
+      type: object
+      properties:
+        metrics:
+          type: array
+          items:
+            $ref: "#/components/schemas/TelemetryMetricDto"
+    ListTelemetrySourcesResponse:
+      type: object
+      properties:
+        sources:
+          type: array
+          items:
+            $ref: "#/components/schemas/TelemetrySource"
+    ListTelemetryTracesResponse:
+      type: object
+      properties:
+        traces:
+          type: array
+          items:
+            $ref: "#/components/schemas/TelemetryTraceSummary"
+        total:
+          type: integer
+          format: int32
+        truncated:
+          type: boolean
+    SearchTelemetryLogsResponse:
+      type: object
+      properties:
+        logs:
+          type: array
+          items:
+            $ref: "#/components/schemas/TelemetryLogDto"
+        total:
+          type: integer
+          format: int32
+        truncated:
+          type: boolean
     SpanEvent:
       type: object
       properties:
@@ -112,6 +151,60 @@ components:
           type: object
           additionalProperties:
             type: string
+    TelemetrySource:
+      type: object
+      description: One addressable bucket of the telemetry buffer.
+      properties:
+        key:
+          type: string
+        kind:
+          $ref: "#/components/schemas/TelemetrySourceKind"
+        label:
+          type: string
+        repositoryId:
+          type: string
+        workspaceId:
+          type: string
+        services:
+          type: array
+          items:
+            $ref: "#/components/schemas/TelemetrySourceService"
+        spans:
+          type: integer
+          format: int32
+        logs:
+          type: integer
+          format: int32
+        metricSeries:
+          type: integer
+          format: int32
+        bytes:
+          type: integer
+          format: int64
+        oldestReceivedAt:
+          $ref: "#/components/schemas/Instant"
+        newestReceivedAt:
+          $ref: "#/components/schemas/Instant"
+    TelemetrySourceKind:
+      type: string
+      enum:
+      - SERVICE
+      - WORKSPACE
+      - UNSCOPED
+    TelemetrySourceService:
+      type: object
+      properties:
+        name:
+          type: string
+        spans:
+          type: integer
+          format: int32
+        logs:
+          type: integer
+          format: int32
+        metricSeries:
+          type: integer
+          format: int32
     TelemetrySpanDto:
       type: object
       properties:
@@ -147,6 +240,44 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/SpanEvent"
+    TelemetryStoreCaps:
+      type: object
+      properties:
+        spansPerSource:
+          type: integer
+          format: int32
+        logsPerSource:
+          type: integer
+          format: int32
+        metricSeriesPerSource:
+          type: integer
+          format: int32
+    TelemetryStoreState:
+      type: object
+      description: The in-memory buffer's own state.
+      properties:
+        startedAt:
+          $ref: "#/components/schemas/Instant"
+        totalBytes:
+          type: integer
+          format: int64
+        maxTotalBytes:
+          type: integer
+          format: int64
+        caps:
+          $ref: "#/components/schemas/TelemetryStoreCaps"
+        sourceCount:
+          type: integer
+          format: int32
+        evictedSpans:
+          type: integer
+          format: int64
+        evictedLogs:
+          type: integer
+          format: int64
+        droppedMetricSeries:
+          type: integer
+          format: int64
     TelemetryTraceDto:
       type: object
       properties:
@@ -160,11 +291,51 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/TelemetryLogDto"
+    TelemetryTraceSummary:
+      type: object
+      description: One row of the trace list.
+      properties:
+        traceId:
+          type: string
+        rootName:
+          type: string
+        rootService:
+          type: string
+        services:
+          type: array
+          items:
+            type: string
+        startEpochNanos:
+          type: integer
+          format: int64
+        durationMs:
+          type: integer
+          format: int64
+        spanCount:
+          type: integer
+          format: int32
+        errorSpanCount:
+          type: integer
+          format: int32
+        hasException:
+          type: boolean
+        rootMissing:
+          type: boolean
 paths:
   /observability/api/telemetry/errors:
     get:
       parameters:
+      - name: limit
+        in: query
+        schema:
+          type: integer
+          format: int32
+          default: 200
       - name: repositoryId
+        in: query
+        schema:
+          type: string
+      - name: service
         in: query
         schema:
           type: string
@@ -173,6 +344,10 @@ paths:
         schema:
           type: integer
           format: int32
+      - name: source
+        in: query
+        schema:
+          type: string
       - name: workspaceId
         in: query
         schema:
@@ -183,13 +358,19 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Response4"
+                $ref: "#/components/schemas/ListTelemetryErrorsResponse"
       summary: Errors
       tags:
       - Workspace Telemetry Controller
   /observability/api/telemetry/logs:
     get:
       parameters:
+      - name: limit
+        in: query
+        schema:
+          type: integer
+          format: int32
+          default: 200
       - name: query
         in: query
         schema:
@@ -207,6 +388,10 @@ paths:
         schema:
           type: integer
           format: int32
+      - name: source
+        in: query
+        schema:
+          type: string
       - name: workspaceId
         in: query
         schema:
@@ -217,7 +402,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Response3"
+                $ref: "#/components/schemas/SearchTelemetryLogsResponse"
       summary: Logs
       tags:
       - Workspace Telemetry Controller
@@ -232,6 +417,14 @@ paths:
         in: query
         schema:
           type: string
+      - name: service
+        in: query
+        schema:
+          type: string
+      - name: source
+        in: query
+        schema:
+          type: string
       - name: workspaceId
         in: query
         schema:
@@ -242,14 +435,24 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Response2"
+                $ref: "#/components/schemas/ListTelemetryMetricsResponse"
       summary: Metrics
       tags:
       - Workspace Telemetry Controller
   /observability/api/telemetry/slow-spans:
     get:
       parameters:
+      - name: limit
+        in: query
+        schema:
+          type: integer
+          format: int32
+          default: 200
       - name: repositoryId
+        in: query
+        schema:
+          type: string
+      - name: service
         in: query
         schema:
           type: string
@@ -263,6 +466,10 @@ paths:
         schema:
           type: string
           default: duration
+      - name: source
+        in: query
+        schema:
+          type: string
       - name: thresholdMs
         in: query
         schema:
@@ -279,8 +486,83 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Response1"
+                $ref: "#/components/schemas/ListSlowSpansResponse"
       summary: Slow Spans
+      tags:
+      - Workspace Telemetry Controller
+  /observability/api/telemetry/sources:
+    get:
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListTelemetrySourcesResponse"
+      summary: Sources
+      tags:
+      - Workspace Telemetry Controller
+  /observability/api/telemetry/store:
+    get:
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TelemetryStoreState"
+      summary: Store
+      tags:
+      - Workspace Telemetry Controller
+  /observability/api/telemetry/traces:
+    get:
+      parameters:
+      - name: limit
+        in: query
+        schema:
+          type: integer
+          format: int32
+          default: 200
+      - name: repositoryId
+        in: query
+        schema:
+          type: string
+      - name: service
+        in: query
+        schema:
+          type: string
+      - name: sinceMinutes
+        in: query
+        schema:
+          type: integer
+          format: int32
+      - name: sort
+        in: query
+        schema:
+          type: string
+          default: recent
+      - name: source
+        in: query
+        schema:
+          type: string
+      - name: thresholdMs
+        in: query
+        schema:
+          type: integer
+          format: int64
+          default: 0
+      - name: workspaceId
+        in: query
+        schema:
+          type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListTelemetryTracesResponse"
+      summary: Traces
       tags:
       - Workspace Telemetry Controller
   /observability/api/telemetry/traces/{traceId}:
@@ -295,6 +577,10 @@ paths:
         in: query
         schema:
           type: string
+      - name: source
+        in: query
+        schema:
+          type: string
       - name: workspaceId
         in: query
         schema:
@@ -305,7 +591,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Response"
+                $ref: "#/components/schemas/GetTelemetryTraceResponse"
       summary: Trace
       tags:
       - Workspace Telemetry Controller

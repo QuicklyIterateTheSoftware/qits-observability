@@ -93,11 +93,18 @@ UI from here rather than from a second container.
 ## What it owns, and what it deliberately does not
 
 **Owns no tables, and no datasource.** `TelemetryStore` is in-memory and ephemeral by design — a JVM
-restart empties it. Bounding is two-tier: per-workspace count caps (spans / logs / metric series)
-plus a global byte ceiling that evicts oldest-first from the *fattest* bucket, so one chatty service
-pays for its own volume instead of evicting a quieter workspace's telemetry. Tuning knobs default in
-code: `qits.telemetry.max-spans-per-workspace` (5000), `.max-logs-per-workspace` (10000),
-`.max-metric-series-per-workspace` (500), `.max-total-bytes` (64 MiB).
+restart empties it, and `…/telemetry/store` reports `startedAt` so a UI can say so rather than
+letting an empty screen read as broken. Bounding is two-tier: per-source count caps (spans / logs /
+metric series) plus a global byte ceiling that evicts oldest-first from the *fattest* bucket, so one
+chatty service pays for its own volume instead of evicting a quieter one's telemetry. Tuning knobs
+default in code: `qits.telemetry.max-spans-per-workspace` (2000), `.max-logs-per-workspace` (10000),
+`.max-metric-series-per-workspace` (500), `.max-total-bytes` (64 MiB). The keys keep their
+`-per-workspace` spelling for compatibility; a bucket is a source.
+
+**Report buffer pressure in counts, not bytes.** With these caps the count caps bind first every
+time — ten full span buckets estimate at roughly 40 MB against a 64 MiB ceiling — so a byte gauge
+sits low and still while records are being evicted. `evictedSpans` is the number that matters: zero
+means you are seeing everything that arrived, non-zero means you are seeing what survived.
 
 **Ingest is protobuf-only.** qits pins every launched exporter to `http/protobuf`, so OTLP/JSON
 (which deviates from proto3 JSON) and gRPC are not implemented. Gzip is detected by magic bytes
@@ -107,8 +114,15 @@ rather than `Content-Encoding`, which is correct whether or not the server alrea
 dependency here; that is the app shell's business. This repo is the receiving end.
 
 **It does not know what a workspace is.** Records are bucketed by the resource attributes an
-exporter stamped, nothing more. Telemetry whose attributes are missing lands in a quarantine bucket
-(`_unscoped`) that is bounded like any other and exposed by no query.
+exporter stamped, nothing more: the `qits.repository.id`/`qits.workspace.id` pair if both are there,
+otherwise `service.name` under `_service/<name>`, otherwise `_unscoped`. Every bucket is bounded the
+same way and every bucket is reachable, through `?source=`.
+
+The `service.name` tier is not cosmetic. Nothing on this platform stamps the qits attributes — the
+sender that would is a known gap, recorded below — so before it existed all ten processes shared one
+bucket, which defeated the fairness tier above and put the whole platform's telemetry somewhere no
+query could name. Splitting them multiplied the worst-case retained set, which is why the span cap
+dropped from 5,000 to 2,000 in the same change.
 
 ## The boundary
 
@@ -141,6 +155,13 @@ With no observer the event is a no-op, which is the supported standalone configu
 just re-read on their own schedule instead of being pushed at. The event carries no payload, so a
 dropped one self-heals on the next.
 
+**Do not build a live channel on this.** The hint fires only for records carrying both qits
+attributes, and on this platform nothing stamps them, so it is silent for effectively all the
+telemetry that exists. A stream wired to it would look live and never fire, which is worse than
+having none. It is also a same-process CDI event, and under the gateway topology qits-workspaces and
+qits-observability are separate containers. The observability UI polls, and that is the settled
+answer rather than a gap waiting to be filled.
+
 ## Deploying it
 
 `service/src/main/resources/application.properties` now carries what a deployment needs and this
@@ -172,12 +193,36 @@ The sender that is still missing, and it is the workspace half:
   aiming it at this service's address, and reintroducing whatever declares it. See
   `migration-deployables-plan.md` §6 in the superproject, which records the deferral.
 
-Routes: `POST /observability/api/otel/v1/{traces,logs,metrics}` (ingest), `GET
-/observability/api/telemetry/{errors,slow-spans,logs,metrics}?repositoryId=&workspaceId=` and `GET
-/observability/api/telemetry/traces/{traceId}?repositoryId=&workspaceId=` (the UI), plus
-`/observability/mcp` (the MCP server, named `observability`) and `/observability/q/{openapi,
+Routes: `POST /observability/api/otel/v1/{traces,logs,metrics}` (ingest), the query surface below,
+plus `/observability/mcp` (the MCP server, named `observability`) and `/observability/q/{openapi,
 swagger-ui}`. Ingest is hidden from the OpenAPI document on purpose — it is a wire protocol spoken
-by SDKs, not something a generated client calls.
+by SDKs, not something a generated client calls; everything else is in `docs/openapi.yml`.
+
+| Route | Answers |
+|---|---|
+| `GET …/telemetry/store` | the buffer's own state: `startedAt`, the caps, `sourceCount`, what it has evicted |
+| `GET …/telemetry/sources` | every bucket — `key`, `kind`, `label`, per-signal counts, per-service breakdown, oldest/newest |
+| `GET …/telemetry/traces` | the trace list: root name, duration, span count, error flag, `rootMissing` |
+| `GET …/telemetry/traces/{traceId}` | one trace's spans and its correlated logs |
+| `GET …/telemetry/{errors,slow-spans,logs,metrics}` | as before |
+
+**Naming a bucket.** Every query above takes either `?source=<key>` or the original
+`?repositoryId=&workspaceId=` pair, and `source` wins when both are given. The key comes from
+`…/telemetry/sources` and is **opaque** — pass it back verbatim, do not build one. That is the only
+way to reach the buckets keyed on `service.name`, which is where all of this platform's own
+telemetry lands; the pair cannot spell them, because a pair key always contains a `/`.
+
+**Every list is bounded.** `?limit=` on `errors`, `slow-spans`, `logs` and `traces` defaults to 200
+and is refused above 1000 with a 400 rather than quietly clamped. Those four answer `{ items…,
+total, truncated }`, so a screen can say "showing 200 of 1,841" instead of implying it has
+everything. `metrics` has no limit and needs none — one point per series, and the series count is
+already capped.
+
+**An unknown bucket is empty, not a 404.** An unknown source key, an unknown workspace pair and a
+bucket that eviction emptied all answer 200 with nothing in it, because the store genuinely cannot
+tell them apart. `…/telemetry/sources` and `…/telemetry/store` are what make them distinguishable —
+whether the key is listed, and what has been dropped. The same holds for `traces/{traceId}`: an id
+that never existed and one whose spans were evicted answer identically.
 
 The repository and the workspace are a **filter**, not a container: this context owns neither, and
 buckets by the ids an exporter stamped, so they are query parameters. `{traceId}` is in the path

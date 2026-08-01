@@ -19,6 +19,13 @@ package eu.wohlben.qits.telemetry.control;
  * }
  * }</pre>
  *
+ * <p><strong>Do not wire a stream to this.</strong> The hint fires only for records carrying both
+ * qits attributes ({@code TelemetryStore#fireTelemetryHints}), and on this platform nothing stamps
+ * them: every export lands in a service-keyed or unscoped bucket, so a channel fed from here would
+ * be silent for all of it. Silent is the worst failure mode available, because it looks live. The
+ * observability UI polls for exactly this reason, and making the hint fire for every bucket would
+ * mean changing the hot ingest path to buy what polling already delivers.
+ *
  * <p>With no observer registered the event is a no-op, which is the supported standalone
  * configuration: telemetry still ingests and still answers queries, browsers just do not get a
  * live push and re-read on their own schedule. The hint carries no data by design, so a dropped or

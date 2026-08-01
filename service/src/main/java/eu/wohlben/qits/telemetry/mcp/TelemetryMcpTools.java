@@ -35,6 +35,15 @@ import java.util.List;
  * down, and every call re-validates the scope, so an agent can only ever see its own workspace's
  * telemetry.
  *
+ * <p><strong>Why the listing queries are not here.</strong> {@code TelemetryQueryService} also
+ * answers "what sources exist", "what state is the buffer in" and "what traces are buffered", and
+ * the REST surface exposes all three. None of them becomes a tool. Scope is this surface's entire
+ * safety property — {@code requireScope()} fails closed without both a repository and a workspace,
+ * and {@link TelemetryToolFilter} hides the tools from any session not narrowed that far — and a
+ * listing that spans every bucket on the platform has no scope to check. It would be a
+ * cross-project leak by design, not by defect. The "humans and agents see identical answers" rule
+ * still holds for every question an agent is allowed to ask.
+ *
  * <p>The two validations reach outside this context and are therefore ports the consuming
  * application implements: {@link RepositoryScopeGuard} (is the repository in the session's
  * project?) and {@link WorkspaceLookup} (is the workspace still an active one of that repository?).
