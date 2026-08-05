@@ -1,15 +1,19 @@
 package eu.wohlben.qits.telemetry.api;
 
 import static io.restassured.RestAssured.given;
+import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.greaterThan;
 import static org.hamcrest.Matchers.hasItem;
 import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.notNullValue;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import eu.wohlben.qits.telemetry.TelemetryFixtures;
 import io.opentelemetry.proto.logs.v1.SeverityNumber;
 import io.quarkus.test.junit.QuarkusIntegrationTest;
+import java.time.Duration;
+import java.time.Instant;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -232,6 +236,118 @@ class OtelReceiverIT {
             equalTo("java.lang.IllegalStateException"));
 
     given().get(QUERY + "/logs?source=" + source + "&limit=0").then().statusCode(400);
+  }
+
+  /**
+   * The log-streaming plan's canary batch, once, through the real artifact — the same payload {@link
+   * CanaryLogStreamTest} takes apart assertion by assertion against the suite's JVM. One method
+   * rather than seven: the store lives in the other process and cannot be cleared between tests, so
+   * splitting this would only make each part depend on the ones before it.
+   *
+   * <p>What is proven here and nowhere else is that a realistic log export survives native-image.
+   * The stack trace is the sharpest of these — a multi-line string travelling through a generated
+   * protobuf message, into an attribute map, out through Jackson — and a batch whose severity, trace
+   * correlation or exception attributes came back empty would still have answered 200 at ingest.
+   */
+  @Test
+  void theCanaryBatchIsAnswerableThroughTheWholeQuerySurface() {
+    String source = "_service/" + TelemetryFixtures.CANARY_SERVICE;
+
+    given()
+        .contentType(PROTOBUF)
+        .body(TelemetryFixtures.canaryTraceRequest().toByteArray())
+        .when()
+        .post(INGEST + "/traces")
+        .then()
+        .statusCode(200);
+    given()
+        .contentType(PROTOBUF)
+        .body(
+            TelemetryFixtures.canaryLogsRequest("canary is alive", "canary hit the widget service")
+                .toByteArray())
+        .when()
+        .post(INGEST + "/logs")
+        .then()
+        .statusCode(200)
+        .contentType(PROTOBUF);
+
+    // 1 — the canary is its own source, named by service.name rather than swept into _unscoped.
+    given()
+        .get(QUERY + "/sources")
+        .then()
+        .statusCode(200)
+        .body("sources.find { it.key == '" + source + "' }.kind", equalTo("SERVICE"))
+        .body(
+            "sources.find { it.key == '" + source + "' }.label",
+            equalTo(TelemetryFixtures.CANARY_SERVICE))
+        .body("sources.find { it.key == '" + source + "' }.logs", equalTo(2));
+
+    // 2 — both records, with the severity a screen filters on.
+    given()
+        .get(QUERY + "/logs?source=" + source)
+        .then()
+        .statusCode(200)
+        .body("logs", hasSize(2))
+        .body("logs[0].severityText", equalTo("INFO"))
+        .body("logs[0].severityNumber", equalTo(9))
+        .body("logs[1].severityText", equalTo("ERROR"))
+        .body("logs[1].severityNumber", equalTo(17))
+        .body("logs[1].traceId", equalTo(TelemetryFixtures.CANARY_TRACE_ID));
+
+    // 3 — the error, with its stack trace whole.
+    given()
+        .get(QUERY + "/errors?source=" + source)
+        .then()
+        .statusCode(200)
+        .body("groups", hasSize(1))
+        .body("groups[0].errorLogs", hasSize(1))
+        .body(
+            "groups[0].errorLogs[0].attributes.'exception.type'",
+            equalTo(TelemetryFixtures.CANARY_EXCEPTION_TYPE))
+        .body(
+            "groups[0].errorLogs[0].attributes.'exception.stacktrace'",
+            containsString("CanaryResource.callWidgets(CanaryResource.java:42)"));
+
+    // 4 — and both records on the page of the trace they were emitted inside.
+    given()
+        .get(QUERY + "/traces/" + TelemetryFixtures.CANARY_TRACE_ID + "?source=" + source)
+        .then()
+        .statusCode(200)
+        .body("trace.spans", hasSize(1))
+        .body("trace.spans[0].spanId", equalTo(TelemetryFixtures.CANARY_SPAN_ID))
+        .body("trace.spans[0].name", equalTo("GET /canary"))
+        .body("trace.logs", hasSize(2));
+
+    // 5 — a later batch is accepted on its own connection and accumulates rather than replacing.
+    given()
+        .contentType(PROTOBUF)
+        .header("Connection", "close")
+        .body(
+            TelemetryFixtures.canaryLogsRequest("canary is still alive", "canary failed again")
+                .toByteArray())
+        .when()
+        .post(INGEST + "/logs")
+        .then()
+        .statusCode(200);
+    given()
+        .get(QUERY + "/logs?source=" + source)
+        .then()
+        .statusCode(200)
+        .body("logs", hasSize(4))
+        .body("logs.body", hasItem("canary is still alive"));
+
+    // 7 — restart truth, as far as a packaged fixture can see it: the artifact is launched once, so
+    // there is no restart to observe, only whether startedAt is this process's own stamp. A constant
+    // or a first-export stamp would fail here, and both are what the UI's "held since" must not say.
+    String startedAt =
+        given().get(QUERY + "/store").then().statusCode(200).body("evictedLogs", equalTo(0))
+            .extract()
+            .path("startedAt");
+    Instant started = Instant.parse(startedAt);
+    Instant now = Instant.now();
+    assertTrue(
+        started.isBefore(now.plusSeconds(60)) && started.isAfter(now.minus(Duration.ofHours(1))),
+        "startedAt must be this process's start, not a constant; got " + startedAt);
   }
 
   @Test

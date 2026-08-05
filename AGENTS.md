@@ -126,6 +126,14 @@ identity, are what keep one project's telemetry out of another's.
 - `TelemetryFixtures` builds real `Export*ServiceRequest` protobufs. Seed the store through the real
   `TelemetryDecoder` rather than hand-constructing `StoredSpan`s where the decoding is part of what
   you're asserting.
+- **The canary is the producer's-eye view.** `TelemetryFixtures.canaryLogsRequest` /
+  `canaryTraceRequest` build one batch shaped like a platform service's OTel logging bridge —
+  `service.name=qits-canary` plus an instance attribute, an INFO and an ERROR carrying
+  `exception.type/message/stacktrace`, both inside one span. `CanaryLogStreamTest` posts it as bytes
+  and answers every consumer question through the REST surface only; `OtelReceiverIT` runs the same
+  batch through the packaged artifact once. Change the fixture and both move together, which is the
+  point: the log-streaming plan's LB workstream is "one realistic payload, asserted where a reader
+  reads it", not more decoder cases.
 - App-level config lives in `src/main/resources/application.properties` —
   `quarkus.rest.path=/observability/api`, `quarkus.http.non-application-root-path=/observability/q`,
   the MCP root-path, the body limit, the OpenAPI info — and **the tests inherit it**. Quarkus merges

@@ -39,7 +39,100 @@ public final class TelemetryFixtures {
   public static final String SPAN_ID_A = "b7ad6b7169203331";
   public static final String SPAN_ID_B = "c8ad6b7169203332";
 
+  // --- the canary ---------------------------------------------------------------------------
+  // One batch shaped like what a platform Quarkus service's OTel logging bridge exports: a
+  // resource that names the service and the instance, two records inside one server span, and an
+  // error carrying the OTel exception semantic attributes rather than only a formatted body. Used
+  // by CanaryLogStreamTest against the running suite and by OtelReceiverIT against the packaged
+  // artifact, so both prove the same payload.
+
+  /** The canary's {@code service.name} — what the source list must show instead of {@code _unscoped}. */
+  public static final String CANARY_SERVICE = "qits-canary";
+
+  /** One instance attribute beside the name: identity is a resource concern, not a message prefix. */
+  public static final String CANARY_INSTANCE_ID = "qits-canary-01f9";
+
+  public static final String CANARY_TRACE_ID = "4e1c9a2b7d6f43a8b0c5e8f1a2d3c4b5";
+  public static final String CANARY_SPAN_ID = "5f2da3c8e7b09142";
+
+  public static final String CANARY_EXCEPTION_TYPE = "java.lang.IllegalStateException";
+  public static final String CANARY_EXCEPTION_MESSAGE = "canary could not reach the widget service";
+
+  /** A real multi-frame stack trace: the errors feed has to carry it through unchanged. */
+  public static final String CANARY_STACKTRACE =
+      "java.lang.IllegalStateException: canary could not reach the widget service\n"
+          + "\tat eu.wohlben.qits.canary.CanaryResource.callWidgets(CanaryResource.java:42)\n"
+          + "\tat eu.wohlben.qits.canary.CanaryResource.get(CanaryResource.java:28)\n";
+
   private TelemetryFixtures() {}
+
+  /** The canary's resource: the service name plus the one instance attribute, no qits.* pair. */
+  public static Resource canaryResource() {
+    return Resource.newBuilder()
+        .addAttributes(attribute("service.name", CANARY_SERVICE))
+        .addAttributes(attribute("service.instance.id", CANARY_INSTANCE_ID))
+        .build();
+  }
+
+  /**
+   * The canary log batch: one INFO record and one ERROR record, both stamped with the canary trace
+   * and span so the trace-scoped read has something to correlate, the ERROR additionally carrying
+   * {@code exception.type} / {@code exception.message} / {@code exception.stacktrace}.
+   *
+   * <p>Timestamps are wall-clock at build time, not the fixed nanos the other fixtures use: the
+   * query surface filters on its own ingest stamp, but a screen renders these, and a record dated
+   * 1970 would pass every assertion while looking broken.
+   */
+  public static ExportLogsServiceRequest canaryLogsRequest(String infoBody, String errorBody) {
+    long nowNanos = System.currentTimeMillis() * 1_000_000L;
+    LogRecord info =
+        canaryRecord(nowNanos, SeverityNumber.SEVERITY_NUMBER_INFO, "INFO", infoBody).build();
+    LogRecord error =
+        canaryRecord(nowNanos + 12_000_000L, SeverityNumber.SEVERITY_NUMBER_ERROR, "ERROR", errorBody)
+            .addAttributes(attribute("exception.type", CANARY_EXCEPTION_TYPE))
+            .addAttributes(attribute("exception.message", CANARY_EXCEPTION_MESSAGE))
+            .addAttributes(attribute("exception.stacktrace", CANARY_STACKTRACE))
+            .build();
+    return ExportLogsServiceRequest.newBuilder()
+        .addResourceLogs(
+            ResourceLogs.newBuilder()
+                .setResource(canaryResource())
+                .addScopeLogs(
+                    ScopeLogs.newBuilder()
+                        .setScope(
+                            InstrumentationScope.newBuilder().setName("io.quarkus.opentelemetry"))
+                        .addLogRecords(info)
+                        .addLogRecords(error)))
+        .build();
+  }
+
+  /** The server span the canary's records were emitted inside — what its trace page is a page of. */
+  public static ExportTraceServiceRequest canaryTraceRequest() {
+    long startNanos = System.currentTimeMillis() * 1_000_000L;
+    return traceRequest(
+        canaryResource(),
+        spanBuilder(
+                CANARY_TRACE_ID,
+                CANARY_SPAN_ID,
+                "GET /canary",
+                startNanos,
+                startNanos + 42_000_000L)
+            .build());
+  }
+
+  private static LogRecord.Builder canaryRecord(
+      long epochNanos, SeverityNumber severity, String severityText, String body) {
+    return LogRecord.newBuilder()
+        .setTimeUnixNano(epochNanos)
+        .setObservedTimeUnixNano(epochNanos)
+        .setSeverityNumber(severity)
+        .setSeverityText(severityText)
+        .setBody(AnyValue.newBuilder().setStringValue(body))
+        .setTraceId(bytes(CANARY_TRACE_ID))
+        .setSpanId(bytes(CANARY_SPAN_ID))
+        .addAttributes(attribute("thread.name", "executor-thread-1"))
+        .addAttributes(attribute("log.logger.namespace", "eu.wohlben.qits.canary.CanaryResource"));
+  }
 
   public static Resource resource(String serviceName, String repoId, String workspaceId) {
     Resource.Builder resource =
