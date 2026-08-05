@@ -292,7 +292,15 @@ class OtelReceiverIT {
         .body("logs[0].severityNumber", equalTo(9))
         .body("logs[1].severityText", equalTo("ERROR"))
         .body("logs[1].severityNumber", equalTo(17))
-        .body("logs[1].traceId", equalTo(TelemetryFixtures.CANARY_TRACE_ID));
+        .body("logs[1].traceId", equalTo(TelemetryFixtures.CANARY_TRACE_ID))
+        // …and which build wrote them: a nested map from the resource, serialised by the packaged
+        // process rather than the suite's JVM.
+        .body(
+            "logs[0].resourceAttributes.'service.version'",
+            equalTo(TelemetryFixtures.CANARY_VERSION))
+        .body(
+            "logs[0].resourceAttributes.'service.instance.id'",
+            equalTo(TelemetryFixtures.CANARY_INSTANCE_ID));
 
     // 3 — the error, with its stack trace whole.
     given()

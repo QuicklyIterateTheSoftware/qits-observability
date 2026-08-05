@@ -128,6 +128,10 @@ components:
           type: object
           additionalProperties:
             type: string
+        resourceAttributes:
+          type: object
+          additionalProperties:
+            type: string
     TelemetryMetricDto:
       type: object
       properties:
@@ -148,6 +152,10 @@ components:
         serviceName:
           type: string
         attributes:
+          type: object
+          additionalProperties:
+            type: string
+        resourceAttributes:
           type: object
           additionalProperties:
             type: string
@@ -240,6 +248,10 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/SpanEvent"
+        resourceAttributes:
+          type: object
+          additionalProperties:
+            type: string
     TelemetryStoreCaps:
       type: object
       properties:

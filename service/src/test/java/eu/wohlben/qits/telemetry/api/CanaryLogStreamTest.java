@@ -160,6 +160,69 @@ class CanaryLogStreamTest {
   }
 
   /**
+   * Which build emitted the record. The platform stamps {@code service.version}, {@code
+   * deployment.environment.name} and {@code service.instance.id} into every cd-deployed container's
+   * resource, and the store has kept them all along — but the read surface used to drop them, so a
+   * reader could see that qits-canary logged something and never which release did.
+   *
+   * <p>Asserted on all three reads that answer with a record, because they are three separate DTO
+   * paths over the same stored log and a field wired into one is not wired into the others. The span
+   * on the trace page carries it too: a log names its build, so its span has to name the same one or
+   * the page contradicts itself.
+   *
+   * <p>The map arrives whole, so {@code service.name} is in it as well as beside it. That is the
+   * point rather than a redundancy — nothing here filters the resource down to a list of attributes
+   * someone thought of.
+   */
+  @Test
+  void everyReadCarriesTheResourceIdentityOfTheBuildThatEmittedIt() {
+    postCanarySpan();
+    postCanaryLogs();
+
+    given()
+        .get(QUERY + "/logs?source=" + SOURCE)
+        .then()
+        .statusCode(200)
+        .body(
+            "logs[0].resourceAttributes.'service.version'",
+            equalTo(TelemetryFixtures.CANARY_VERSION))
+        .body(
+            "logs[0].resourceAttributes.'deployment.environment.name'",
+            equalTo(TelemetryFixtures.CANARY_ENVIRONMENT))
+        .body(
+            "logs[0].resourceAttributes.'service.instance.id'",
+            equalTo(TelemetryFixtures.CANARY_INSTANCE_ID))
+        .body(
+            "logs[0].resourceAttributes.'service.name'",
+            equalTo(TelemetryFixtures.CANARY_SERVICE));
+
+    given()
+        .get(QUERY + "/errors?source=" + SOURCE)
+        .then()
+        .statusCode(200)
+        .body(
+            "groups[0].errorLogs[0].resourceAttributes.'service.version'",
+            equalTo(TelemetryFixtures.CANARY_VERSION))
+        .body(
+            "groups[0].errorLogs[0].resourceAttributes.'service.instance.id'",
+            equalTo(TelemetryFixtures.CANARY_INSTANCE_ID));
+
+    given()
+        .get(QUERY + "/traces/" + TelemetryFixtures.CANARY_TRACE_ID + "?source=" + SOURCE)
+        .then()
+        .statusCode(200)
+        .body(
+            "trace.logs[1].resourceAttributes.'service.version'",
+            equalTo(TelemetryFixtures.CANARY_VERSION))
+        .body(
+            "trace.spans[0].resourceAttributes.'service.version'",
+            equalTo(TelemetryFixtures.CANARY_VERSION))
+        .body(
+            "trace.spans[0].resourceAttributes.'deployment.environment.name'",
+            equalTo(TelemetryFixtures.CANARY_ENVIRONMENT));
+  }
+
+  /**
    * The errors feed is what an agent reads instead of scraping a log tail, so the stack trace has to
    * arrive whole rather than as a formatted message. The INFO record must not be in it: a feed that
    * groups by trace would otherwise carry every record the failing request also logged.

@@ -41,16 +41,26 @@ public final class TelemetryFixtures {
 
   // --- the canary ---------------------------------------------------------------------------
   // One batch shaped like what a platform Quarkus service's OTel logging bridge exports: a
-  // resource that names the service and the instance, two records inside one server span, and an
-  // error carrying the OTel exception semantic attributes rather than only a formatted body. Used
-  // by CanaryLogStreamTest against the running suite and by OtelReceiverIT against the packaged
-  // artifact, so both prove the same payload.
+  // resource that names the service, the build and the instance, two records inside one server
+  // span, and an error carrying the OTel exception semantic attributes rather than only a
+  // formatted body. Used by CanaryLogStreamTest against the running suite and by OtelReceiverIT
+  // against the packaged artifact, so both prove the same payload.
 
   /** The canary's {@code service.name} — what the source list must show instead of {@code _unscoped}. */
   public static final String CANARY_SERVICE = "qits-canary";
 
   /** One instance attribute beside the name: identity is a resource concern, not a message prefix. */
   public static final String CANARY_INSTANCE_ID = "qits-canary-01f9";
+
+  /**
+   * The canary's {@code service.version}. cd stamps a release version into every container it
+   * deploys, and it is the attribute that separates "this service is failing" from "this release
+   * is failing" — so the fixture carries one, and the read surface has to bring it back.
+   */
+  public static final String CANARY_VERSION = "2026.805.114500";
+
+  /** The canary's {@code deployment.environment.name}, the third attribute cd injects. */
+  public static final String CANARY_ENVIRONMENT = "production";
 
   public static final String CANARY_TRACE_ID = "4e1c9a2b7d6f43a8b0c5e8f1a2d3c4b5";
   public static final String CANARY_SPAN_ID = "5f2da3c8e7b09142";
@@ -66,10 +76,16 @@ public final class TelemetryFixtures {
 
   private TelemetryFixtures() {}
 
-  /** The canary's resource: the service name plus the one instance attribute, no qits.* pair. */
+  /**
+   * The canary's resource: the service name plus the three identity attributes a cd-deployed
+   * container carries — version, environment and instance — and no qits.* pair, which is what every
+   * platform process actually exports.
+   */
   public static Resource canaryResource() {
     return Resource.newBuilder()
         .addAttributes(attribute("service.name", CANARY_SERVICE))
+        .addAttributes(attribute("service.version", CANARY_VERSION))
+        .addAttributes(attribute("deployment.environment.name", CANARY_ENVIRONMENT))
         .addAttributes(attribute("service.instance.id", CANARY_INSTANCE_ID))
         .build();
   }
