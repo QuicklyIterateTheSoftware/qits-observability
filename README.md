@@ -110,6 +110,12 @@ means you are seeing everything that arrived, non-zero means you are seeing what
 (which deviates from proto3 JSON) and gRPC are not implemented. Gzip is detected by magic bytes
 rather than `Content-Encoding`, which is correct whether or not the server already decompressed.
 
+**Inflating is capped at the same 64 MiB the wire body is**, and over it the answer is 413.
+`quarkus.http.limits.max-body-size` only bounds what arrives on the socket, and a compressed body is
+under that by definition — gzip of a repeated byte runs past 1000:1, so a few kilobytes that pass
+the HTTP check can inflate into gigabytes of heap. The receiver therefore counts as it inflates and
+stops one byte past the ceiling, reading the limit from that same key so the two cannot drift.
+
 **It does not produce telemetry.** `quarkus-opentelemetry` — qits' own outbound SDK — is not a
 dependency here; that is the app shell's business. This repo is the receiving end.
 

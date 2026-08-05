@@ -15,12 +15,14 @@ import io.quarkus.test.common.http.TestHTTPResource;
 import io.quarkus.test.junit.QuarkusTest;
 import jakarta.inject.Inject;
 import java.io.BufferedReader;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.net.Socket;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
+import java.util.zip.GZIPOutputStream;
 import org.eclipse.microprofile.config.ConfigProvider;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -302,6 +304,56 @@ class CanaryLogStreamTest {
     assertTrue(
         statusLineForDeclaredBodyOf(CEILING_BYTES + 1).contains("413"),
         "a body over the ceiling is refused, not truncated and not accepted");
+  }
+
+  /**
+   * The same ceiling, on the other side of the compression. A gzipped body is under the HTTP limit
+   * by definition — that is what makes it worth compressing — so the wire check cannot speak for
+   * what it inflates to, and a repeated byte gzips past 1000:1: the few kilobytes posted here expand
+   * to more than 64 MiB. Before the receiver counted, that was a {@code readAllBytes()} into heap.
+   *
+   * <p>Compression itself is not what is refused, which is why the batch above it has to be accepted
+   * first: the cap is a ceiling on the inflated size, not a rule against gzip.
+   */
+  @Test
+  void aGzipBombIsRefusedWith413RatherThanInflatedWithoutBound() throws IOException {
+    given()
+        .contentType(PROTOBUF)
+        .body(
+            TelemetryFixtures.gzip(
+                TelemetryFixtures.canaryLogsRequest(INFO_BODY, ERROR_BODY).toByteArray()))
+        .when()
+        .post(INGEST + "/logs")
+        .then()
+        .statusCode(200);
+    given().get(QUERY + "/logs?source=" + SOURCE).then().statusCode(200).body("logs", hasSize(2));
+
+    given()
+        .contentType(PROTOBUF)
+        .body(gzipBombPastTheCeiling())
+        .when()
+        .post(INGEST + "/logs")
+        .then()
+        .statusCode(413);
+
+    // Refused whole: a bomb must not leave behind whatever decoded before the ceiling was reached.
+    given().get(QUERY + "/logs?source=" + SOURCE).then().statusCode(200).body("logs", hasSize(2));
+  }
+
+  /**
+   * A few kilobytes that inflate past the ceiling. Built by streaming a repeated chunk through the
+   * compressor rather than compressing one huge array: the test has to stay as bounded in memory as
+   * the receiver it is testing, and only the compressed form is ever held.
+   */
+  private static byte[] gzipBombPastTheCeiling() throws IOException {
+    ByteArrayOutputStream compressed = new ByteArrayOutputStream();
+    byte[] chunk = new byte[64 * 1024];
+    try (GZIPOutputStream gz = new GZIPOutputStream(compressed)) {
+      for (long written = 0; written <= CEILING_BYTES; written += chunk.length) {
+        gz.write(chunk);
+      }
+    }
+    return compressed.toByteArray();
   }
 
   /** The status line of a POST that declares — and never sends — a body of {@code declaredBytes}. */
