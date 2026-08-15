@@ -10,3 +10,6 @@
 # ENVIRONMENT service: every environment runs its own instance, and a green build deploys into
 # whichever tier listens to the built branch.
 deployment_target: environment
+
+routes: /observability
+navigation: Observability:7
