@@ -61,8 +61,8 @@
                  (see security/ForwardAuthMechanism). NOT an auth variant and NOT an authorization
                  policy — the monolith's -Dqits.variant auth/* modules do not come here at all;
                  authentication terminates at the gateway (migration-auth-plan.md). -->
-            <groupId>io.quarkus</groupId>
-            <artifactId>quarkus-security</artifactId>
+            <groupId>${project.groupId}</groupId>
+            <artifactId>qits-auth-core</artifactId>
         </dependency>
         <dependency>
             <!-- The JSON query surface (WorkspaceTelemetryController) and the protobuf ingest

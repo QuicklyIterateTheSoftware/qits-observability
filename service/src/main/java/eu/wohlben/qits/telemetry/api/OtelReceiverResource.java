@@ -44,6 +44,7 @@ import org.eclipse.microprofile.openapi.annotations.Operation;
 @Path("otel/v1")
 @Consumes(OtelReceiverResource.PROTOBUF)
 @Produces(OtelReceiverResource.PROTOBUF)
+@jakarta.annotation.security.RolesAllowed("qits:system")
 public class OtelReceiverResource {
 
   static final String PROTOBUF = "application/x-protobuf";
