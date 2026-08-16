@@ -11,6 +11,7 @@ import io.quarkiverse.mcp.server.ToolResponse;
 import io.quarkiverse.mcp.server.test.McpAssured;
 import io.quarkiverse.mcp.server.test.McpAssured.McpStreamableTestClient;
 import io.quarkus.test.junit.QuarkusTest;
+import io.quarkus.test.junit.TestProfile;
 import jakarta.inject.Inject;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -28,6 +29,7 @@ import org.junit.jupiter.api.Test;
  * fixture all belong to qits-projects and qits-workspaces. Every assertion below is unchanged.
  */
 @QuarkusTest
+@TestProfile(McpStatelessTestProfile.class)
 public class TelemetryMcpToolsTest {
 
   @Inject TelemetryStore store;
@@ -82,6 +84,7 @@ public class TelemetryMcpToolsTest {
 
   private McpStreamableTestClient client(String repoId, String workspaceId) {
     return McpAssured.newStreamableClient()
+        .setStateless()
         .setMcpPath("/observability/mcp")
         .setAdditionalHeaders(
             msg -> {

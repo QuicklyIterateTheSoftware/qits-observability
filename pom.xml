@@ -61,11 +61,11 @@
         <qits.auth-core.version>2026.815.141521</qits.auth-core.version>
         <qits.maven.repository.url>http://registry.dev.localhost:8080/artifacts/maven/maven</qits.maven.repository.url>
 
-        <!-- Not in the platform BOM, so both are pinned here, matching the monorepo's service/pom
-             comment: mcp-server 1.13.0 is built against Quarkus 3.33.x (≈ our 3.34.6), and
+        <!-- Not in the platform BOM, so both are pinned here: mcp-server 2.0.0.CR2 provides the
+             stateless MCP 2026-07-28 protocol and targets Quarkus 3.33.x (≈ our 3.34.6), while
              opentelemetry-proto's "alpha" refers to Java API stability only — the OTLP wire format
              itself is Stable. Don't auto-bump either. -->
-        <mcp-server.version>1.13.0</mcp-server.version>
+        <mcp-server.version>2.0.0.CR2</mcp-server.version>
         <opentelemetry-proto.version>1.7.0-alpha</opentelemetry-proto.version>
 
         <!-- Also outside the platform BOM, and pinned for the same reason. 2.8.2 rather than the

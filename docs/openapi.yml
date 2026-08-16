@@ -371,9 +371,16 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ListTelemetryErrorsResponse"
+        "401":
+          description: Not Authorized
+        "403":
+          description: Not Allowed
       summary: Errors
       tags:
       - Workspace Telemetry Controller
+      security:
+      - SecurityScheme:
+        - qits:admin
   /observability/api/telemetry/logs:
     get:
       parameters:
@@ -415,9 +422,16 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/SearchTelemetryLogsResponse"
+        "401":
+          description: Not Authorized
+        "403":
+          description: Not Allowed
       summary: Logs
       tags:
       - Workspace Telemetry Controller
+      security:
+      - SecurityScheme:
+        - qits:admin
   /observability/api/telemetry/metrics:
     get:
       parameters:
@@ -448,9 +462,16 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ListTelemetryMetricsResponse"
+        "401":
+          description: Not Authorized
+        "403":
+          description: Not Allowed
       summary: Metrics
       tags:
       - Workspace Telemetry Controller
+      security:
+      - SecurityScheme:
+        - qits:admin
   /observability/api/telemetry/slow-spans:
     get:
       parameters:
@@ -499,9 +520,16 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ListSlowSpansResponse"
+        "401":
+          description: Not Authorized
+        "403":
+          description: Not Allowed
       summary: Slow Spans
       tags:
       - Workspace Telemetry Controller
+      security:
+      - SecurityScheme:
+        - qits:admin
   /observability/api/telemetry/sources:
     get:
       responses:
@@ -511,9 +539,16 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ListTelemetrySourcesResponse"
+        "401":
+          description: Not Authorized
+        "403":
+          description: Not Allowed
       summary: Sources
       tags:
       - Workspace Telemetry Controller
+      security:
+      - SecurityScheme:
+        - qits:admin
   /observability/api/telemetry/store:
     get:
       responses:
@@ -523,9 +558,16 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/TelemetryStoreState"
+        "401":
+          description: Not Authorized
+        "403":
+          description: Not Allowed
       summary: Store
       tags:
       - Workspace Telemetry Controller
+      security:
+      - SecurityScheme:
+        - qits:admin
   /observability/api/telemetry/traces:
     get:
       parameters:
@@ -574,9 +616,16 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ListTelemetryTracesResponse"
+        "401":
+          description: Not Authorized
+        "403":
+          description: Not Allowed
       summary: Traces
       tags:
       - Workspace Telemetry Controller
+      security:
+      - SecurityScheme:
+        - qits:admin
   /observability/api/telemetry/traces/{traceId}:
     get:
       parameters:
@@ -604,9 +653,16 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/GetTelemetryTraceResponse"
+        "401":
+          description: Not Authorized
+        "403":
+          description: Not Allowed
       summary: Trace
       tags:
       - Workspace Telemetry Controller
+      security:
+      - SecurityScheme:
+        - qits:admin
 info:
   title: qits-observability API
-  version: 2026.802.191319
+  version: 2026.812.160032
