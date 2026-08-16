@@ -104,16 +104,12 @@ steps:
       npm run build
       cd -
 
-      # The two --secret flags are the fleet's shape for a credential inside a build: the launcher
-      # injects the run's commissioned idp client as
-      # $QITS_COMMISSIONED_CLIENT_ID/$QITS_COMMISSIONED_CLIENT_SECRET, and a Dockerfile that needs it
-      # mounts it on one RUN — never a --build-arg, which is recorded in a pullable image's history.
-      # THIS build needs none: its Maven resolve is reactor-only over public repositories, so there
-      # is no `.qits-maven-settings.xml` here and no mount to feed. Both halves are free — buildx
-      # ignores a secret no RUN mounts, and a missing env source is NOT an error (measured on buildx
-      # v0.36.1, the build runs green with the variable unset).
+      # The builder resolves qits-auth-core from the platform Maven repository. Host networking
+      # reaches its published address; the URL is derived from the injected registry coordinate,
+      # and the commissioned run credential enters only through BuildKit secret mounts.
       ref="$QITS_REGISTRY/$QITS_IMAGE_REPOSITORY/qits-observability:$QITS_CI_SHA"
-      docker build \
+      docker build --network host \
+        --build-arg QITS_MAVEN_REPOSITORY_URL="http://$QITS_REGISTRY/artifacts/maven/maven" \
         --secret id=qits-client-id,env=QITS_COMMISSIONED_CLIENT_ID \
         --secret id=qits-client-secret,env=QITS_COMMISSIONED_CLIENT_SECRET \
         -t "$ref" -f docker/Dockerfile .

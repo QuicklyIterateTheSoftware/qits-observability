@@ -47,6 +47,9 @@ RUN ./mvnw --version
 # stage compiles.
 COPY . .
 
+ARG QITS_MAVEN_REPOSITORY_URL=http://registry.dev.localhost:8080/artifacts/maven/maven
+ENV QITS_MAVEN_REPOSITORY_URL=$QITS_MAVEN_REPOSITORY_URL
+
 # `-pl service -am` builds the app and its dependency closure, not the whole reactor. That is not a
 # module list — it names the one module this image ships, which the COPY below already names anyway,
 # so leaving it out gains nothing. What it buys: this repo will publish libraries as well as an
@@ -113,14 +116,17 @@ COPY . .
 #
 # One `cp` re-materialises it in the layer that is about to move it. It has to be in THIS `RUN` and
 # not a tidier one of its own — a layer boundary is exactly what it is undoing.
-RUN d=service/src/main/webui/dist/qits-spa-observability/browser; \
+RUN --mount=type=secret,id=qits-client-id,env=QITS_MAVEN_AUTH_USR \
+    --mount=type=secret,id=qits-client-secret,env=QITS_MAVEN_AUTH_PSW \
+    d=service/src/main/webui/dist/qits-spa-observability/browser; \
     test -f "$d/index.html" || { \
       echo "No built client at $d." >&2; \
       echo "The build context must carry one: run 'npm ci && npm run build'" >&2; \
       echo "in service/src/main/webui first — this stage cannot, see the Quinoa flags above." >&2; \
       exit 1; }; \
     cp -a "$d" "$d.layer" && rm -rf "$d" && mv "$d.layer" "$d" && \
-    ./mvnw -B -ntp -pl service -am package -Dnative -DskipTests \
+    ./mvnw -B -ntp -s .qits-maven-settings.xml -pl service -am package -Dnative -DskipTests \
+      -Dqits.maven.repository.url="$QITS_MAVEN_REPOSITORY_URL" \
       -Dquarkus.native.native-image-xmx=4g \
       -Dquarkus.quinoa.package-manager-install=true \
       -Dquarkus.quinoa.package-manager-install.node-version=22.22.0 \
