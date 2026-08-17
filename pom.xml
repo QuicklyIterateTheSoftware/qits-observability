@@ -58,7 +58,7 @@
         <quarkus.platform.artifact-id>quarkus-bom</quarkus.platform.artifact-id>
         <quarkus.platform.group-id>io.quarkus.platform</quarkus.platform.group-id>
         <quarkus.platform.version>3.34.6</quarkus.platform.version>
-        <qits.auth-core.version>2026.815.141521</qits.auth-core.version>
+        <qits.auth-core.version>2026.817.175344</qits.auth-core.version>
         <qits.maven.repository.url>http://registry.dev.localhost:8080/artifacts/maven/maven</qits.maven.repository.url>
 
         <!-- Not in the platform BOM, so both are pinned here: mcp-server 2.0.0.CR2 provides the
