@@ -40,11 +40,25 @@ import org.eclipse.microprofile.openapi.annotations.Operation;
  * <p>When qits itself runs as a managed service, every export is additionally teed byte-verbatim to
  * the parent qits via {@link OtelForwarder} — before decoding, so the forward carries the exact
  * wire bytes (still gzipped if the exporter compressed them).
+ *
+ * <p><b>Ingest is unauthenticated, and that is the doctrine, not an omission</b> (AGENTS.md: "none
+ * of this reaches ingest"). Its callers are OTel SDK exporters — the one inside every qits service
+ * and the ones inside workspace containers — which carry no identity at all: the exporter sends
+ * what {@code quarkus.otel.exporter.otlp.endpoint} names and nothing else, and qits-auth-core's
+ * forward-auth or a bearer is not something an SDK can be handed. {@code @PermitAll} is written
+ * out rather than left implicit because this class once carried {@code
+ * @RolesAllowed("qits:system")} (the 2026-08-15 "protect observability APIs" sweep, which meant the
+ * UI routes and caught this one too): every export answered 401, the SDK retried silently, nothing
+ * logged, and the store stayed empty for five days on wohlben.eu — measured 2026-08-20, an
+ * anonymous POST answered 401 and the same body under {@code X-Qits-Roles: qits:system} answered
+ * 200. The boundary here is the network: the edge never routes a session-less request in, and on
+ * qits-net the per-source caps bound what any sender can cost. {@code OtelIngestAnonymousTest} pins
+ * it.
  */
 @Path("otel/v1")
 @Consumes(OtelReceiverResource.PROTOBUF)
 @Produces(OtelReceiverResource.PROTOBUF)
-@jakarta.annotation.security.RolesAllowed("qits:system")
+@jakarta.annotation.security.PermitAll
 public class OtelReceiverResource {
 
   static final String PROTOBUF = "application/x-protobuf";
