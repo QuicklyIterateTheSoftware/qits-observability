@@ -11,6 +11,7 @@ import eu.wohlben.qits.telemetry.dto.TelemetrySpanDto;
 import eu.wohlben.qits.telemetry.dto.TelemetryStoreStateDto;
 import eu.wohlben.qits.telemetry.dto.TelemetryTraceDto;
 import eu.wohlben.qits.telemetry.dto.TelemetryTraceSummaryDto;
+import eu.wohlben.qits.telemetry.error.BadRequestException;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import java.time.Instant;
@@ -339,6 +340,63 @@ public class TelemetryQueryService {
   }
 
   /**
+   * The OTel severity floors, by the word an operator picks from a menu.
+   *
+   * <p>The scale is 1–24 in six bands of four ({@code TRACE}, {@code TRACE2}…), so a band is named
+   * by its <em>first</em> number and the filter is {@code >=}: picking {@code WARN} admits WARN,
+   * WARN2..4 and everything above, which is what "warnings and worse" means to the person asking.
+   * {@link StoredLog#SEVERITY_ERROR} is this table's ERROR entry and stays the single definition of
+   * where the error range starts.
+   */
+  private static final Map<String, Integer> SEVERITY_FLOORS =
+      Map.of(
+          "TRACE", 1,
+          "DEBUG", 5,
+          "INFO", 9,
+          "WARN", 13,
+          "ERROR", StoredLog.SEVERITY_ERROR,
+          "FATAL", 21);
+
+  /**
+   * The severity floor a caller named, or null for "every severity", which is the default.
+   *
+   * <p>Takes either a band name ({@code TRACE}/{@code DEBUG}/{@code INFO}/{@code WARN}/{@code
+   * ERROR}/{@code FATAL}, case-insensitively) or a raw number on the OTel 1–24 scale. Both are
+   * accepted because both are what callers have: a UI offers the six words, and an agent reading a
+   * record's {@code severityNumber} back has the number.
+   *
+   * <p><strong>An unrecognised value is a 400, not a silent "everything".</strong> A misspelt
+   * filter that quietly stopped filtering would answer a screen full of INFO under a heading that
+   * says ERROR, which is the one wrong answer a log filter must never give. {@code WARNING} is
+   * accepted as a synonym of {@code WARN} because the OTel text field routinely spells it that way
+   * and refusing the word an exporter itself prints would be a puzzle rather than a guard.
+   */
+  public static Integer severityFloor(String minSeverity) {
+    if (minSeverity == null || minSeverity.isBlank()) {
+      return null;
+    }
+    String name = minSeverity.trim().toUpperCase(Locale.ROOT);
+    if ("WARNING".equals(name)) {
+      name = "WARN";
+    }
+    Integer floor = SEVERITY_FLOORS.get(name);
+    if (floor != null) {
+      return floor;
+    }
+    try {
+      int number = Integer.parseInt(name);
+      if (number >= 1 && number <= 24) {
+        return number;
+      }
+    } catch (NumberFormatException ignored) {
+      // Fall through to the one message: a word we do not know and a number we cannot use are the
+      // same mistake from the caller's side, and listing the accepted words fixes both.
+    }
+    throw new BadRequestException(
+        "minSeverity must be one of TRACE, DEBUG, INFO, WARN, ERROR, FATAL or a number 1-24");
+  }
+
+  /**
    * Logs whose body or severity text contains {@code query} (case-insensitive), oldest first.
    * {@code service} additionally narrows to one service name (the UI's log-tail filter).
    */
@@ -349,6 +407,7 @@ public class TelemetryQueryService {
             query,
             sinceMinutes,
             service,
+            null,
             Integer.MAX_VALUE)
         .items();
   }
@@ -356,15 +415,31 @@ public class TelemetryQueryService {
   /**
    * {@link #searchLogs} over one source, bounded. Bounding keeps the <em>newest</em> matches and
    * still returns them oldest-first: a tail wants the end of the buffer, not its beginning.
+   *
+   * <p>{@code minSeverity} is a floor on the OTel severity number ({@link #severityFloor}), and it
+   * is applied here rather than left to the caller for one reason: this method truncates. A screen
+   * that asked for 200 records and filtered them itself would be filtering a page the buffer had
+   * already cut, so "the 3 errors in the last 200 records" would masquerade as "the last 3 errors".
+   *
+   * <p><strong>A floor excludes records with no severity at all.</strong> {@code severityNumber} is
+   * 0 when an exporter stamped none, and 0 satisfies no floor — an unset record is not quietly
+   * promoted into a band it never claimed. Those records are still there with no floor applied,
+   * which is the default.
    */
   public Page<TelemetryLogDto> searchLogsIn(
-      String sourceKey, String query, Integer sinceMinutes, String service, int limit) {
+      String sourceKey,
+      String query,
+      Integer sinceMinutes,
+      String service,
+      Integer minSeverity,
+      int limit) {
     long cutoff = cutoff(sinceMinutes);
     String needle = query == null ? "" : query.toLowerCase(Locale.ROOT);
     List<TelemetryLogDto> logs =
         store.logsIn(sourceKey).stream()
             .filter(log -> log.receivedAtMillis() >= cutoff)
             .filter(log -> matchesService(service, log.serviceName()))
+            .filter(log -> minSeverity == null || log.severityNumber() >= minSeverity)
             .filter(
                 log ->
                     needle.isEmpty()

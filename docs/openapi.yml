@@ -390,6 +390,10 @@ paths:
           type: integer
           format: int32
           default: 200
+      - name: minSeverity
+        in: query
+        schema:
+          type: string
       - name: query
         in: query
         schema:
@@ -665,4 +669,4 @@ paths:
         - qits:admin
 info:
   title: qits-observability API
-  version: 2026.812.160032
+  version: 2026.819.212848
