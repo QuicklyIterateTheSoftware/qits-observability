@@ -141,6 +141,70 @@ class WorkspaceTelemetryControllerTest {
         .body("logs", hasSize(0));
   }
 
+  /**
+   * The severity floor is the service's, not the screen's — and it is applied before the answer is
+   * cut, which is the whole reason it is a parameter. The band names are floors, so WARN admits the
+   * ERROR record too, and INFO admits all three.
+   */
+  @Test
+  void logsFilterByMinSeverity() {
+    long now = System.currentTimeMillis();
+    store.addLogs(
+        decoder.decodeLogs(
+            TelemetryFixtures.logsRequest(
+                "svc", REPO, WORKSPACE, SeverityNumber.SEVERITY_NUMBER_INFO, "an info line", null),
+            now));
+    store.addLogs(
+        decoder.decodeLogs(
+            TelemetryFixtures.logsRequest(
+                "svc", REPO, WORKSPACE, SeverityNumber.SEVERITY_NUMBER_WARN, "a warning", null),
+            now));
+
+    given()
+        .get(BASE + "/logs?" + SCOPE)
+        .then()
+        .statusCode(200)
+        .body("logs", hasSize(3));
+    given()
+        .get(BASE + "/logs?" + SCOPE + "&minSeverity=INFO")
+        .then()
+        .statusCode(200)
+        .body("logs", hasSize(3));
+    given()
+        .get(BASE + "/logs?" + SCOPE + "&minSeverity=warn")
+        .then()
+        .statusCode(200)
+        .body("logs", hasSize(2))
+        .body("logs.body", hasItem("a warning"))
+        .body("logs.body", not(hasItem("an info line")));
+    given()
+        .get(BASE + "/logs?" + SCOPE + "&minSeverity=ERROR")
+        .then()
+        .statusCode(200)
+        .body("logs", hasSize(1))
+        .body("logs[0].body", equalTo("rest error log"));
+    // The raw OTel number is the same filter: 17 is where the ERROR band starts.
+    given()
+        .get(BASE + "/logs?" + SCOPE + "&minSeverity=17")
+        .then()
+        .statusCode(200)
+        .body("logs", hasSize(1));
+  }
+
+  /** A misspelt band stops the request. Silently answering "everything" would read as "no errors". */
+  @Test
+  void unknownMinSeverityIsRefused() {
+    for (String bad : new String[] {"nonsense", "0", "25", "-3"}) {
+      given()
+          .get(BASE + "/logs?" + SCOPE + "&minSeverity=" + bad)
+          .then()
+          .statusCode(400)
+          .body("message", notNullValue());
+    }
+    // Blank is "no floor", not a mistake: it is what an unset dropdown sends.
+    given().get(BASE + "/logs?" + SCOPE + "&minSeverity=").then().statusCode(200);
+  }
+
   @Test
   void metricsReturnLatestPerSeriesWithNameFilter() {
     given().get(BASE + "/metrics?" + SCOPE).then().statusCode(200).body("metrics", hasSize(2));

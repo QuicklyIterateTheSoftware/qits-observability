@@ -218,6 +218,16 @@ by SDKs, not something a generated client calls; everything else is in `docs/ope
 way to reach the buckets keyed on `service.name`, which is where all of this platform's own
 telemetry lands; the pair cannot spell them, because a pair key always contains a `/`.
 
+**The narrowing lenses are the service's, not a screen's.** `?service=` narrows every query above to
+one reporting service, `?sinceMinutes=` windows on the ingest stamp, and on `logs` `?minSeverity=`
+is a floor on the OTel severity — `TRACE`/`DEBUG`/`INFO`/`WARN`/`ERROR`/`FATAL` (case-insensitive,
+`WARNING` accepted) or a raw number 1–24, so `WARN` answers warnings and worse. Anything else is a
+400: a severity filter that silently stopped filtering would answer a page of INFO under a heading
+that says ERROR. A named floor also excludes records carrying **no** severity, since 0 satisfies no
+floor and an exporter's omission is not a band. They are parameters rather than something a UI does
+to the answer because these endpoints truncate — filtering a page already cut to 200 shows "the
+errors among the last 200 records" while reading as "the last 200 errors".
+
 **Every list is bounded.** `?limit=` on `errors`, `slow-spans`, `logs` and `traces` defaults to 200
 and is refused above 1000 with a 400 rather than quietly clamped. Those four answer `{ items…,
 total, truncated }`, so a screen can say "showing 200 of 1,841" instead of implying it has

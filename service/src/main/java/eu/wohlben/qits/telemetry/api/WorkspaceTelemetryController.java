@@ -210,6 +210,14 @@ public class WorkspaceTelemetryController {
    * The log tail, oldest-first. {@code query} matches the body <em>and</em> the severity text,
    * case-insensitively — searching "error" finds ERROR-severity records, which surprises anyone who
    * was not told. When the answer is bounded it keeps the newest matches: a tail wants the end.
+   *
+   * <p>{@code minSeverity} is the severity band, by name ({@code TRACE}…{@code FATAL}) or by a raw
+   * OTel number, and it is a <em>floor</em>: {@code WARN} answers warnings and worse. It is a
+   * parameter rather than something a screen does to the answer because this endpoint truncates —
+   * filtering a page already cut to 200 would show "the errors among the last 200 records" while
+   * reading as "the last 200 errors". An unrecognised value is a 400, because a severity filter
+   * that silently stopped filtering is the one wrong answer this endpoint must never give. Records
+   * carrying no severity at all are excluded whenever a floor is named.
    */
   @GET
   @Path("/logs")
@@ -219,6 +227,7 @@ public class WorkspaceTelemetryController {
       @QueryParam("workspaceId") String workspaceId,
       @QueryParam("query") String query,
       @QueryParam("service") String service,
+      @QueryParam("minSeverity") String minSeverity,
       @QueryParam("sinceMinutes") Integer sinceMinutes,
       @QueryParam("limit") @DefaultValue("" + DEFAULT_LIMIT) int limit) {
     TelemetryQueryService.Page<TelemetryLogDto> page =
@@ -227,6 +236,7 @@ public class WorkspaceTelemetryController {
             query,
             sinceMinutes,
             service,
+            TelemetryQueryService.severityFloor(minSeverity),
             checkedLimit(limit));
     return new SearchTelemetryLogsRequest.Response(page.items(), page.total(), page.truncated());
   }
