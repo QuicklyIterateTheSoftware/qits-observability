@@ -388,6 +388,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:agent
   /observability/api/telemetry/logs:
     get:
       parameters:
@@ -443,6 +444,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:agent
   /observability/api/telemetry/metrics:
     get:
       parameters:
@@ -483,6 +485,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:agent
   /observability/api/telemetry/slow-spans:
     get:
       parameters:
@@ -541,6 +544,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:agent
   /observability/api/telemetry/sources:
     get:
       responses:
@@ -560,6 +564,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:agent
   /observability/api/telemetry/store:
     get:
       responses:
@@ -579,6 +584,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:agent
   /observability/api/telemetry/traces:
     get:
       parameters:
@@ -637,6 +643,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:agent
   /observability/api/telemetry/traces/{traceId}:
     get:
       parameters:
@@ -674,6 +681,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:agent
 info:
   title: qits-observability API
-  version: 2026.911.212207
+  version: 2026.912.163411

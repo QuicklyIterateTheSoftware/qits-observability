@@ -26,10 +26,11 @@ import jakarta.inject.Inject;
  * so a plain GET here never reaches the SPA fallback.
  *
  * <p>The role is checked on the upgrade: a person's session through the edge, a person's bearer
- * token, or in-network forward-auth headers, all ending in {@code qits:admin}.
+ * token, or in-network forward-auth headers, all ending in {@code qits:admin}. A commissioned
+ * agent's {@code qits:agent} opens it too: the stream only reads.
  */
 @WebSocket(path = "/observability/stream")
-@RolesAllowed("qits:admin")
+@RolesAllowed({"qits:admin", "qits:agent"})
 public class TelemetryStreamSocket {
 
   @Inject TelemetryLiveFeed feed;

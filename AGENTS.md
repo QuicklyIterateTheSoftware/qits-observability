@@ -91,8 +91,9 @@ plain field that a `StartupEvent` observer merely re-stamps.
 
 ## Authentication
 
-Two ways in. Both end in one `SecurityIdentity`, and Jakarta `@RolesAllowed("qits:admin")` decides
-for both, on the REST API and on the stream's upgrade:
+Two ways in. Both end in one `SecurityIdentity`, and Jakarta `@RolesAllowed({"qits:admin",
+"qits:agent"})` decides for both, on the REST API and on the stream's upgrade (`qits:agent` is a
+commissioned agent's role; everything behind it only reads):
 
 - **Forward-auth headers** — `X-Qits-User` / `X-Qits-Roles`, read by qits-auth-core's
   `ForwardAuthMechanism`. A browser session gets them from the edge.
@@ -227,7 +228,7 @@ Playwright never launches anything and no browser is downloaded.
 ### What only a launched process can say
 
 - **The two doors are different.** `OtelReceiverResource` is `@PermitAll` and
-  `WorkspaceTelemetryController` is `@RolesAllowed("qits:admin")`, and under `@QuarkusTest`
+  `WorkspaceTelemetryController` is `@RolesAllowed({"qits:admin", "qits:agent"})`, and under `@QuarkusTest`
   qits-auth-core's `%test` dev-user hands every request `qits:admin` before either annotation is
   consulted. A `NORMAL` launch has no dev-user, so 401 / 403 / 200 on one port is a fact no
   `@QuarkusTest` in this repository can state.
