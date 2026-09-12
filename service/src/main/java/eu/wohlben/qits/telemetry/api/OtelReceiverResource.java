@@ -4,7 +4,11 @@ import com.google.protobuf.InvalidProtocolBufferException;
 import eu.wohlben.qits.telemetry.error.BadRequestException;
 import eu.wohlben.qits.telemetry.error.PayloadTooLargeException;
 import eu.wohlben.qits.telemetry.control.TelemetryDecoder;
+import eu.wohlben.qits.telemetry.control.TelemetryLiveFeed;
 import eu.wohlben.qits.telemetry.control.TelemetryStore;
+import eu.wohlben.qits.telemetry.dto.MetricPoint;
+import eu.wohlben.qits.telemetry.dto.StoredLog;
+import eu.wohlben.qits.telemetry.dto.StoredSpan;
 import io.opentelemetry.proto.collector.logs.v1.ExportLogsServiceRequest;
 import io.opentelemetry.proto.collector.logs.v1.ExportLogsServiceResponse;
 import io.opentelemetry.proto.collector.metrics.v1.ExportMetricsServiceRequest;
@@ -22,6 +26,7 @@ import jakarta.ws.rs.core.HttpHeaders;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.util.List;
 import java.util.zip.GZIPInputStream;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 import org.eclipse.microprofile.openapi.annotations.Operation;
@@ -77,6 +82,12 @@ public class OtelReceiverResource {
 
   @Inject OtelForwarder forwarder;
 
+  /**
+   * The live stream. Handed each decoded batch right after the store took it; it returns at once and
+   * never throws, so ingest does not wait on a socket.
+   */
+  @Inject TelemetryLiveFeed liveFeed;
+
   @POST
   @Path("/traces")
   @Operation(hidden = true)
@@ -86,7 +97,9 @@ public class OtelReceiverResource {
       byte[] body) {
     forwarder.forward("traces", contentType, contentEncoding, body);
     ExportTraceServiceRequest request = parse(body, ExportTraceServiceRequest::parseFrom);
-    store.addSpans(decoder.decodeSpans(request, System.currentTimeMillis()));
+    List<StoredSpan> decoded = decoder.decodeSpans(request, System.currentTimeMillis());
+    store.addSpans(decoded);
+    liveFeed.publishSpans(decoded);
     return ExportTraceServiceResponse.getDefaultInstance().toByteArray();
   }
 
@@ -99,7 +112,9 @@ public class OtelReceiverResource {
       byte[] body) {
     forwarder.forward("logs", contentType, contentEncoding, body);
     ExportLogsServiceRequest request = parse(body, ExportLogsServiceRequest::parseFrom);
-    store.addLogs(decoder.decodeLogs(request, System.currentTimeMillis()));
+    List<StoredLog> decoded = decoder.decodeLogs(request, System.currentTimeMillis());
+    store.addLogs(decoded);
+    liveFeed.publishLogs(decoded);
     return ExportLogsServiceResponse.getDefaultInstance().toByteArray();
   }
 
@@ -112,7 +127,9 @@ public class OtelReceiverResource {
       byte[] body) {
     forwarder.forward("metrics", contentType, contentEncoding, body);
     ExportMetricsServiceRequest request = parse(body, ExportMetricsServiceRequest::parseFrom);
-    store.addMetrics(decoder.decodeMetrics(request, System.currentTimeMillis()));
+    List<MetricPoint> decoded = decoder.decodeMetrics(request, System.currentTimeMillis());
+    store.addMetrics(decoded);
+    liveFeed.publishMetrics(decoded);
     return ExportMetricsServiceResponse.getDefaultInstance().toByteArray();
   }
 

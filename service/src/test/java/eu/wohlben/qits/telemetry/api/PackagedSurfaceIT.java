@@ -140,6 +140,21 @@ class PackagedSurfaceIT {
   }
 
   @Test
+  void aPlainGetOnTheStreamIsNotTheClient() {
+    // websockets-next claims only the upgrade, so a plain GET on /observability/stream falls
+    // through to whatever else answers. The /observability ignored prefix must keep that from being
+    // the SPA fallback. Any 4xx will do; the pinned fact is only that the client is not it.
+    var response = given().when().get("/observability/stream").then().extract();
+    assertFalse(
+        response.asString().contains(CLIENT_MARK),
+        "a plain GET on the stream path must not be answered with the client");
+    assertTrue(
+        response.statusCode() >= 400,
+        "a plain GET on the stream path must be an error, not a page; got: "
+            + response.statusCode());
+  }
+
+  @Test
   void theReadinessEndpointIsWhereTheDeploymentLooksForIt() {
     given()
         .when()

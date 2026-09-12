@@ -169,7 +169,8 @@ attributes, and on this platform nothing stamps them, so it is silent for effect
 telemetry that exists. A stream wired to it would look live and never fire, which is worse than
 having none. It is also a same-process CDI event, and under the gateway topology qits-workspaces and
 qits-observability are separate containers. The observability UI polls, and that is the settled
-answer rather than a gap waiting to be filled.
+answer rather than a gap waiting to be filled. The live stream below is fed from ingest directly,
+not from this event.
 
 ## Deploying it
 
@@ -203,6 +204,7 @@ The sender that is still missing, and it is the workspace half:
   `migration-deployables-plan.md` §6 in the superproject, which records the deferral.
 
 Routes: `POST /observability/api/otel/v1/{traces,logs,metrics}` (ingest), the query surface below,
+the live stream at `/observability/stream` (a WebSocket, see [The live stream](#the-live-stream)),
 plus `/observability/mcp` (the MCP server, named `observability`) and `/observability/q/{openapi,
 swagger-ui}`. Ingest is hidden from the OpenAPI document on purpose — it is a wire protocol spoken
 by SDKs, not something a generated client calls; everything else is in `docs/openapi.yml`.
@@ -254,6 +256,39 @@ The tee: when qits itself runs as a managed service the supervising qits injects
 `OTEL_EXPORTER_OTLP_ENDPOINT`, and every export is forwarded byte-verbatim upstream *before*
 decoding, in addition to being stored locally. Fire-and-forget — an unreachable or rejecting parent
 is invisible to the local ingest.
+
+## The live stream
+
+`/observability/stream` is a WebSocket that pushes what this receiver takes in (logs, spans with
+their events, metrics) as it arrives, filtered per connection on the server. `qits observe` is its
+client. The wire protocol is `qits-observe-plan.md` in the superproject.
+
+- **Auth.** `qits:admin`, checked on the upgrade. A person's `qits` token (`aud=qits-platform`, roles
+  in `groups`) or the edge's forward-auth headers both work. No credential is 401, no role is 403.
+- **Protocol.** A connection starts subscribed to nothing. Each `{"subscribe": [group, …]}` frame
+  replaces its filters. Groups are ORed, the conditions in a group are ANDed, an empty group matches
+  everything, an empty list matches nothing. A frame it cannot read is answered with `{"error": …}`
+  and the old filters stay. Each matching record arrives as `{"kind", "receivedAtMillis", "source",
+  "record"}`, where `record` is the DTO the query API returns for that kind and `source` is the
+  bucket key. Live only: no replay.
+- **Back-pressure.** Ingest never waits for a reader. One dispatcher thread takes each batch from a
+  bounded backlog (`qits.telemetry.stream.dispatch-backlog`, 1024 batches). Each connection queues
+  at most `qits.telemetry.stream.queue-size` frames (256). A record that finds the queue full is
+  dropped, and when the queue next runs empty the reader gets `{"dropped": N}`. The server pings
+  every 30 seconds so the edge keeps an idle stream open.
+
+## Authentication
+
+Two ways in, and `@RolesAllowed` decides for both:
+
+- **Forward-auth headers.** The edge turns a browser session into `X-Qits-User` / `X-Qits-Roles`.
+  qits-auth-core's `ForwardAuthMechanism` reads them.
+- **A person's bearer token.** A person's command-line tool calls through the edge with that
+  person's token. The edge removes forward-auth headers from such a request, so `quarkus-oidc`
+  checks the token instead, and its `groups` claim becomes the roles.
+
+Ingest (`/observability/api/otel/v1/*`) is `@PermitAll` and takes an export with no credential.
+Every other route refuses a request with neither: 401. See `AGENTS.md`.
 
 ## What is deliberately *not* here
 

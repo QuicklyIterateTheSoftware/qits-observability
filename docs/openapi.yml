@@ -335,6 +335,11 @@ components:
           type: boolean
         rootMissing:
           type: boolean
+  securitySchemes:
+    SecurityScheme:
+      type: openIdConnect
+      openIdConnectUrl: http://qits-platform-idp:8080/idp/.well-known/openid-configuration
+      description: Authentication
 paths:
   /observability/api/telemetry/errors:
     get:
@@ -671,4 +676,4 @@ paths:
         - qits:admin
 info:
   title: qits-observability API
-  version: 2026.830.143942
+  version: 2026.911.212207

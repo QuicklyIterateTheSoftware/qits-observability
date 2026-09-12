@@ -91,17 +91,28 @@ plain field that a `StartupEvent` observer merely re-stamps.
 
 ## Authentication
 
-Authentication happens at `qits-gateway`. This service resolves a principal from a trusted header
-(`X-Qits-User`, read by `telemetry/security/ForwardAuthMechanism`) and authenticates nothing.
+Two ways in. Both end in one `SecurityIdentity`, and Jakarta `@RolesAllowed("qits:admin")` decides
+for both, on the REST API and on the stream's upgrade:
+
+- **Forward-auth headers** — `X-Qits-User` / `X-Qits-Roles`, read by qits-auth-core's
+  `ForwardAuthMechanism`. A browser session gets them from the edge.
+- **A person's bearer token** — `qits observe` calls through the edge with the person's token from
+  qits-platform-idp. The edge removes every `X-Qits-*` header from a request that carries a Bearer
+  or Basic credential, so headers cannot carry that person. `quarkus-oidc` checks the token
+  (signature, issuer, and an `aud` that holds `${QITS_ENVIRONMENT:prod}-qits-observability` or
+  `qits-platform`), and its `groups` claim becomes the roles.
+
+A request with no `Authorization` header never reaches the token check, so header traffic is what it
+was. A request with a token is decided by the token: OIDC's mechanism runs first, so a token that
+does not validate is 401 even beside valid headers. The tenant is **on by default** and needs no
+deploy config; `%dev` and `%test` turn it off. **Only a bearer ever reaches the idp**
+(`quarkus.oidc.jwks.resolve-early=false`): boot, header traffic and ingest make no call.
+`BearerAuthTest` signs real RS256 tokens with a test key (`BearerAuthProfile` gives the extension
+the public half); `BearerJwksTest` pins the shipped key fetch against `JwksStub`.
 
 **`identity.isAnonymous()` is not a security state** — it means "no name for the audit row". A check
 of the form `if (identity.isAnonymous()) deny` would look like a security control and be worth
 nothing, because reaching this service at all already implies you are inside the trusted network.
-
-There is no auth variant to select in this service. The shared `qits-auth-core` resolves both
-`X-Qits-User` and `X-Qits-Roles`; human-facing REST boundaries use Jakarta
-`@RolesAllowed("qits:admin")`. Machine-facing boundaries require an authenticated identity and
-retain their narrower `MachineAuth` audience/scope checks.
 
 **`X-Qits-*` is the gateway's reserved namespace, stripped from every inbound request
 unconditionally**, so a client cannot forge one. That strip rule is the entire reason the header can
@@ -115,6 +126,31 @@ never traverse the front door at all, since every service sits unpublished on `q
 those containers (`migration-plan.md` §9 item 21). The gateway is a perimeter against the internet,
 not a boundary on `qits-net`; do not write anything here as if it were. The scoping guards, not the
 identity, are what keep one project's telemetry out of another's.
+
+## The live stream
+
+`/observability/stream` (`api/TelemetryStreamSocket`) pushes ingested records to `qits observe`,
+filtered on the server. The wire protocol is `qits-observe-plan.md` in the superproject, shared with
+the CLI: change it there first, and on both sides. README "The live stream" has the summary.
+
+- **The hook is in `OtelReceiverResource`**, after each `store.add*`, and nowhere else. Not in
+  `TelemetryStore` (it stays CDI-free) and not on `TelemetryChanged` (silent for all but workspace
+  records).
+- **Ingest never waits and never fails for it.** `control/TelemetryLiveFeed` returns at once with no
+  subscriber, hands the batch to one dispatcher thread with a bounded backlog, and catches
+  everything. Keep sends as `sendText(…).subscribe()`; never `sendTextAndAwait`.
+- **Back-pressure is per connection** (`control/LiveConnection`): one frame on the wire, at most
+  `qits.telemetry.stream.queue-size` waiting, the rest dropped and reported as `{"dropped": N}` each
+  time the queue runs empty. A full dispatcher backlog is reported the same way.
+- **DEBUG logging only.** This service exports its own logs to itself; an INFO line per frame would
+  feed the stream it describes.
+- `control/TelemetryFilter` is the matcher and stays plain Java (`TelemetryFilterTest` has no
+  Quarkus). `TelemetryStreamFrame` is registered for reflection with the three DTOs it wraps; add any
+  new type Jackson writes on this path there too.
+- Tests: `TelemetryStreamSocketTest` (a real socket, real OTLP posts),
+  `TelemetryStreamOverflowTest` (queue shrunk to 2), `security/BearerAuthTest` (the upgrade's door).
+  The protocol has no acknowledgement, so a test waits for `TelemetryLiveFeed.subscribeFrames()` to
+  move before it ingests.
 
 ## Tests
 
